@@ -43,6 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Dockerfile** template emits OCI `org.opencontainers.image.*`
     labels (`title`, `version`, `source`, `licenses`, `created`).
     Customisable via `--label KEY=VALUE` (repeatable).
+- **UPX compression**: `--compress` flag applies UPX to ELF executables
+  in the built image. `--compress-level {normal,best,ultra}` (default
+  `best`). `--compress-libs` opts in to compressing shared libraries
+  (deprecated UPX feature, off by default). Files <50 KB are skipped.
+  Already-compressed files are detected via `upx -t` and skipped, so the
+  operation is idempotent. Missing `upx` yields a clear, actionable
+  error.
 
 ### Removed
 - Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`
