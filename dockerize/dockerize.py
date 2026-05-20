@@ -15,6 +15,7 @@ from pathlib import Path
 from jinja2 import Environment, PackageLoader
 
 from . import __version__
+from .compress import CompressionLevel, compress_tree
 from .depsolver import DepSolver
 from .security import is_sensitive_path
 
@@ -97,6 +98,8 @@ class Dockerize:
         allow_sensitive: bool = False,
         nss_modules: tuple[str, ...] = DEFAULT_NSS_MODULES,
         extra_labels: dict[str, str] | None = None,
+        compress_level: CompressionLevel | None = None,
+        compress_libs: bool = False,
     ) -> None:
         self.docker: dict[str, str] = {
             "runtime": runtime if runtime else "docker",
@@ -120,6 +123,8 @@ class Dockerize:
         self.allow_sensitive: bool = allow_sensitive
         self.nss_modules: tuple[str, ...] = tuple(nss_modules)
         self.extra_labels: dict[str, str] = dict(extra_labels or {})
+        self.compress_level: CompressionLevel | None = compress_level
+        self.compress_libs: bool = compress_libs
 
         self.users: list[str] = []
         self.groups: list[str] = []
@@ -212,6 +217,7 @@ class Dockerize:
 
             self.copy_files()
             self.resolve_deps()
+            self.compress()
             self.populate()
             self.generate_dockerfile()
             if self._build_image:
@@ -358,6 +364,17 @@ class Dockerize:
         for src, dst in self.paths:
             for srcitem in _expand_glob(src):
                 self.copy_file(srcitem, dst)
+
+    def compress(self) -> list[Path]:
+        """Apply UPX compression to compressible binaries under ``targetdir``."""
+        if self.compress_level is None:
+            return []
+        assert self.targetdir is not None
+        return compress_tree(
+            self.targetdir,
+            level=self.compress_level,
+            include_libs=self.compress_libs,
+        )
 
     def build_image(self) -> None:
         import subprocess
