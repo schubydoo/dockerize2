@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Static-binary fast path: ELF binaries with no `.interp` section
   (statically linked Go/Rust/musl/busybox-static binaries) skip the
   dynamic-loader step entirely. They are copied as-is.
+- Initial pytest suite (`tests/`) covering `depsolver`, `dockerize`, and
+  `main`. `@pytest.mark.integration` + `--run-integration` opt-in for the
+  Linux-only end-to-end build test. Symlink-dependent tests skip on
+  Windows (no elevated permissions assumed).
 
 ### Removed
 - Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`

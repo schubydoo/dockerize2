@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
@@ -102,5 +102,9 @@ class DepSolver:
         self.get_deps(path)
 
     def prefixes(self) -> set[str]:
-        """Return the set of directory prefixes containing accumulated deps."""
-        return {str(Path(p).parent) for p in self.deps}
+        """Return the set of directory prefixes containing accumulated deps.
+
+        Always returns POSIX-style paths because the deps themselves are POSIX
+        (they were emitted by a Linux dynamic loader).
+        """
+        return {str(PurePosixPath(p).parent) for p in self.deps}
