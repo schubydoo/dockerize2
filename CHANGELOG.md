@@ -62,6 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docker` / `podman`, `upx`, `syft`, and `docker buildx`. Exits 0 when
   a usable build environment is detected, 1 otherwise. Cuts support
   load: a single command tells you what's missing.
+- **Multi-arch container image** at `ghcr.io/schubydoo/dockerize2`
+  (`linux/amd64`, `linux/arm64`, `linux/arm/v7`). Two-stage build on
+  `python:3.13-slim-bookworm`. Ships `upx 5.x`, `docker buildx`, `syft`,
+  and the Docker CLI; ENTRYPOINT is `dockerize`. README documents the
+  recommended socket-free `--output-oci` invocation alongside the
+  classic socket-mount form.
 
 ### Removed
 - Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`
