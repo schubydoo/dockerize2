@@ -1,0 +1,45 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "timezone": "Etc/UTC",
+  "schedule": ["before 7am on monday"],
+  "labels": ["dependencies"],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Auto-merge patch updates of dev tooling.",
+      "matchPackageNames": ["ruff", "pytest", "pytest-cov", "mypy", "pre-commit"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "branch"
+    },
+    {
+      "description": "Group all pytest-related updates.",
+      "matchPackageNames": ["/^pytest/"],
+      "groupName": "pytest"
+    },
+    {
+      "description": "Group all ruff-related updates.",
+      "matchPackageNames": ["/^ruff/"],
+      "groupName": "ruff"
+    },
+    {
+      "description": "Group Python core deps to avoid noisy PR floods.",
+      "matchPackageNames": ["jinja2", "pyelftools"],
+      "matchManagers": ["pep621"],
+      "groupName": "python-core-deps"
+    }
+  ]
+}

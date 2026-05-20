@@ -68,6 +68,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the Docker CLI; ENTRYPOINT is `dockerize`. README documents the
   recommended socket-free `--output-oci` invocation alongside the
   classic socket-mount form.
+- **CI / supply-chain workflows** (all in `.github/workflows/`):
+  - `ci.yml` — pytest matrix on `{ubuntu, macos, windows}` × `{3.11, 3.12, 3.13}`;
+    Linux-only integration job runs the end-to-end build test.
+  - `lint.yml` — `ruff check`, `ruff format --check`, `mypy --strict`.
+  - `codeql.yml` — weekly CodeQL Python analysis.
+  - `zizmor.yml` — workflow static analysis (catches `pull_request_target`
+    misuse, script-injection, unpinned actions).
+  - `trivy.yml` — repo + image vulnerability scan (SARIF to Code Scanning).
+  - `gitleaks.yml` — secret scan on PRs + weekly full-history sweep.
+  - `scorecard.yml` — OSSF Scorecard weekly.
+  - `release.yml` — on `v*` tag: PyPI Trusted Publishing + multi-arch
+    GHCR push (`linux/amd64,linux/arm64,linux/arm/v7`) with provenance,
+    SBOM attestation, and cosign keyless signing of every tag.
+- **`dependabot.yml`** — GitHub Actions updates only (Python deps go
+  through Renovate).
+- **`renovate.json`** — `config:recommended` + auto-pin actions to
+  digests + lockfile maintenance + patch-only auto-merge for dev tooling
+  + vulnerability alerts.
+- **`.pre-commit-config.yaml`** — `trailing-whitespace`,
+  `end-of-file-fixer`, `check-yaml`, `check-toml`, `ruff` (+`ruff-format`),
+  and `gitleaks`.
+- **`.github/settings.yml`** — Probot Settings declarative config for
+  branch protection (require status checks, linear history, no force
+  pushes), allowed merge types, and `delete_branch_on_merge`.
 
 ### Removed
 - Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`
