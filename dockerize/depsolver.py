@@ -1,49 +1,57 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
+"""Resolve shared-library dependencies of dynamic ELF binaries."""
+
+from __future__ import annotations
 
 import logging
 import os
 import re
 import subprocess
-from collections import namedtuple
+from typing import NamedTuple
 
 LOG = logging.getLogger(__name__)
 
-RE_DEPS = [
-    re.compile(r'''\s+ (?P<name>\S+) \s+ => \s+
-               (?P<path>\S+) \s+ \((?P<address>0x[0-9a-f]+)\)''',
-               re.VERBOSE),
-    re.compile(r'''(?P<path>\S+) \s+ \((?P<address>0x[0-9a-f]+)\)''',
-               re.VERBOSE)
-    ]
-
-ELFContents = namedtuple('ELFContents',
-                         [
-                             'index',
-                             'name',
-                             'size',
-                             'vma',
-                             'lma',
-                             'offset',
-                             'aligment'
-                         ])
+RE_DEPS: list[re.Pattern[str]] = [
+    re.compile(
+        r"""\s+ (?P<name>\S+) \s+ => \s+
+            (?P<path>\S+) \s+ \((?P<address>0x[0-9a-f]+)\)""",
+        re.VERBOSE,
+    ),
+    re.compile(
+        r"""(?P<path>\S+) \s+ \((?P<address>0x[0-9a-f]+)\)""",
+        re.VERBOSE,
+    ),
+]
 
 
-class ELFFile(dict):
+class ELFContents(NamedTuple):
+    # ``idx`` instead of ``index`` because ``tuple.index`` is a built-in method.
+    idx: str
+    name: str
+    size: str
+    vma: str
+    lma: str
+    offset: str
+    aligment: str
 
-    def __init__(self, path):
-        self.path = path
+
+class ELFFile(dict[str, ELFContents]):
+    """Lightweight wrapper over ``objdump -h`` output for a single ELF file."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__()
+        self.path: str = path
         self.read_sections()
 
-    def read_sections(self):
-        '''Use `objdump` to read list of sections from the ELF file.'''
+    def read_sections(self) -> None:
+        """Use ``objdump`` to read the section table from the ELF file."""
         try:
             out = subprocess.check_output(
-                ['objdump', '-h', self.path],
+                ["objdump", "-h", self.path],
                 stderr=subprocess.STDOUT,
-                encoding='utf-8')
-        except subprocess.CalledProcessError:
-            raise ValueError(self.path)
+                encoding="utf-8",
+            )
+        except subprocess.CalledProcessError as exc:
+            raise ValueError(self.path) from exc
 
         for line in out.splitlines():
             line = line.strip()
@@ -53,47 +61,42 @@ class ELFFile(dict):
             contents = ELFContents(*line.split())
             self[contents.name] = contents
 
-    def section(self, name):
-        '''Return the raw content of the named section from the ELF file.'''
+    def section(self, name: str) -> bytes:
+        """Return the raw bytes of the named section from the ELF file."""
         section = self[name]
-        with open(self.path, 'rb') as fde:
+        with open(self.path, "rb") as fde:
             fde.seek(int(section.offset, base=16))
             data = fde.read(int(section.size, base=16))
             return data
 
-    def interpreter(self):
-        '''Return the value of the `.interp` section of the ELF file.'''
-        return self.section('.interp').rstrip(b'\0').decode('utf-8')
+    def interpreter(self) -> str:
+        """Return the value of the ``.interp`` section (the dynamic loader path)."""
+        return self.section(".interp").rstrip(b"\0").decode("utf-8")
 
 
-class DepSolver(object):
+class DepSolver:
+    """Walks ELF binaries and accumulates their shared-library dependencies."""
 
-    '''Finds shared library dependencies of ELF binaries.'''
+    def __init__(self) -> None:
+        self.deps: set[str] = set()
 
-    def __init__(self):
-        self.deps = set()
+    def get_deps(self, path: str) -> None:
+        LOG.info("getting dependencies for %s", path)
 
-    def get_deps(self, path):
-        LOG.info('getting dependencies for %s', path)
-
-        # Get the path to the dynamic loader from the ELF .interp
-        # section.  We need this because we use the dynamic loader
-        # to produce the list of library dependencies.
+        # The dynamic loader (.interp) is needed because we invoke it with
+        # --list to enumerate the binary's dependencies (this is how ldd works).
         try:
             elf = ELFFile(path)
             interp = elf.interpreter()
         except ValueError:
-            LOG.debug('%s is not a dynamically linked ELF binary (ignoring)',
-                      path)
+            LOG.debug("%s is not a dynamically linked ELF binary (ignoring)", path)
             return
         except KeyError:
-            LOG.debug('%s does not have a .interp section',
-                      path)
+            LOG.debug("%s does not have a .interp section", path)
             return
 
         self.deps.add(interp)
-        out = subprocess.check_output([interp, '--list', path],
-                                      encoding='utf-8')
+        out = subprocess.check_output([interp, "--list", path], encoding="utf-8")
 
         for line in out.splitlines():
             for exp in RE_DEPS:
@@ -101,19 +104,14 @@ class DepSolver(object):
                 if not match:
                     continue
 
-                dep = match.group('path')
-                LOG.debug('%s requires %s',
-                          path,
-                          dep)
-
+                dep = match.group("path")
+                LOG.debug("%s requires %s", path, dep)
                 self.deps.add(dep)
 
-    def add(self, path):
-        '''Add dependencies in `path` to dependencies in self.deps.'''
+    def add(self, path: str) -> None:
+        """Append the dependencies of ``path`` to :attr:`deps`."""
         self.get_deps(path)
 
-    def prefixes(self):
-        '''Return a set of directory prefixes for dependencies.  This is
-        useful if you need to know where to look for other libraries.'''
-
-        return set(os.path.dirname(path) for path in self.deps)
+    def prefixes(self) -> set[str]:
+        """Return the set of directory prefixes containing accumulated deps."""
+        return {os.path.dirname(p) for p in self.deps}

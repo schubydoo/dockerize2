@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PEP 621 packaging via `pyproject.toml` (hatchling backend) + `uv.lock`.
 - `[dev]` optional-dependencies group: `pytest`, `pytest-cov`, `ruff`,
   `mypy`, `pre-commit`.
+- `ruff` and `mypy --strict` configured; both pass cleanly on the package.
+- Type hints throughout `dockerize/`; `argparse` namespace replaced with a
+  typed `CliArgs` dataclass via `dockerize.main.parse_args`.
 
 ### Changed
 - Repository relaunched as the successor to `larsks/dockerize`, which
