@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from . import __description__, __program__, __version__
 from .compress import CompressionLevel
 from .dockerize import DEFAULT_NSS_MODULES, Dockerize, SymlinkOptions
+from .sbom import SBOMFormat
 
 LOG = logging.getLogger(__name__)
 
@@ -48,6 +50,9 @@ class CliArgs:
     extra_labels: dict[str, str] = field(default_factory=dict)
     compress_level: CompressionLevel | None = None
     compress_libs: bool = False
+    sbom_path: Path | None = None
+    sbom_format: SBOMFormat = SBOMFormat.SPDX_JSON
+    output_oci: Path | None = None
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -152,6 +157,31 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    output_more = parser.add_argument_group("Output options (advanced)")
+    output_more.add_argument(
+        "--sbom",
+        metavar="PATH",
+        default=None,
+        help="Write an SBOM of the build context to PATH (requires syft).",
+    )
+    output_more.add_argument(
+        "--sbom-format",
+        choices=[fmt.value for fmt in SBOMFormat],
+        default=SBOMFormat.SPDX_JSON.value,
+        help="SBOM format (default: spdx-json).",
+    )
+    output_more.add_argument(
+        "--output-oci",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Emit an OCI image archive to PATH instead of pushing into a "
+            "daemon. Uses `docker buildx` if available; falls back to "
+            "`podman save --format oci-archive`. Removes the need for "
+            "/var/run/docker.sock when running dockerize from a container."
+        ),
+    )
+
     parser.add_argument(
         "--runtime",
         "-R",
@@ -215,6 +245,9 @@ def parse_args(argv: list[str] | None = None) -> CliArgs:
         extra_labels[key.strip()] = value
 
     compress_level = CompressionLevel(ns.compress_level) if ns.compress else None
+    sbom_path = Path(ns.sbom) if ns.sbom else None
+    sbom_format = SBOMFormat(ns.sbom_format)
+    output_oci = Path(ns.output_oci) if ns.output_oci else None
 
     return CliArgs(
         paths=list(ns.paths),
@@ -237,6 +270,9 @@ def parse_args(argv: list[str] | None = None) -> CliArgs:
         extra_labels=extra_labels,
         compress_level=compress_level,
         compress_libs=ns.compress_libs,
+        sbom_path=sbom_path,
+        sbom_format=sbom_format,
+        output_oci=output_oci,
     )
 
 
@@ -260,6 +296,9 @@ def main(argv: list[str] | None = None) -> None:
         extra_labels=args.extra_labels,
         compress_level=args.compress_level,
         compress_libs=args.compress_libs,
+        sbom_path=args.sbom_path,
+        sbom_format=args.sbom_format,
+        output_oci=args.output_oci,
     )
 
     for path in args.paths:
