@@ -148,10 +148,15 @@ def test_dockerfile_contains_label_block(tmp_path: Path) -> None:
 # -------- nss-modules allowlist -------------------------------------------
 
 
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX path semantics")
 def test_resolve_deps_filters_nss_libs(tmp_path: Path) -> None:
     """resolve_deps should only copy nss libs matching the allowlist."""
     target = tmp_path / "image"
-    target.mkdir()
+    # Seed target with a fake binary so resolve_deps' os.walk hands at least
+    # one path to DepSolver.add (which we then mock to inject our fake dep).
+    (target / "bin").mkdir(parents=True)
+    (target / "bin" / "fakebin").write_bytes(b"\x7fELF" + b"\x00" * 100)
+
     libdir = tmp_path / "libdir"
     libdir.mkdir()
     (libdir / "libnss_files.so.2").write_bytes(b"files")
@@ -161,12 +166,10 @@ def test_resolve_deps_filters_nss_libs(tmp_path: Path) -> None:
     from dockerize.depsolver import DepSolver
 
     def fake_add(self: DepSolver, path: object) -> None:
-        # Pretend the bin needs libnss_files (in this libdir) so prefixes() finds it
+        # Pretend the bin needs libnss_files (in this libdir) so prefixes() finds it.
         self.deps.add(str(libdir / "libnss_files.so.2"))
 
     app = Dockerize(targetdir=str(target), nss_modules=("files",))
-    if os.name == "nt":  # the tmp_path copy semantics need POSIX paths
-        pytest.skip("requires POSIX path semantics")
     with patch.object(DepSolver, "add", new=fake_add):
         app.resolve_deps()
 

@@ -37,6 +37,19 @@ Dependency updates are automated. Renovate (Python deps + lockfile) and
 Dependabot (GitHub Actions) open PRs as needed. Patch-level dev-dep
 updates auto-merge; everything else needs human review.
 
+### One-time GitHub App installs (maintainers only)
+
+Two GitHub Apps drive the automation. Install them once on the repo:
+
+1. **[Renovate](https://github.com/apps/renovate)** — reads
+   [`renovate.json`](renovate.json). Opens dependency PRs.
+2. **[Settings](https://github.com/apps/settings)** — reads
+   [`.github/settings.yml`](.github/settings.yml). Version-controls
+   branch protection, allowed merge types, and label set.
+
+PyPI publishing uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+— configure the publisher once on PyPI side; no token to manage.
+
 ## Reporting bugs
 
 Use [GitHub Issues](https://github.com/schubydoo/dockerize2/issues).

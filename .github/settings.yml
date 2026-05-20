@@ -1,0 +1,41 @@
+# Probot Settings (https://github.com/repository-settings/app)
+# Install the GitHub App on this repo to make settings declarative.
+
+repository:
+  name: dockerize2
+  description: >-
+    Pack a dynamically linked ELF binary and its dependencies into a minimal
+    scratch Docker image. Successor fork of larsks/dockerize.
+  topics: >-
+    docker,elf,ldd,binary,container,image,scratch,minimal,oci,upx,sbom
+  homepage: https://github.com/schubydoo/dockerize2
+  has_issues: true
+  has_projects: false
+  has_wiki: false
+  has_downloads: true
+  default_branch: master
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: true
+  allow_auto_merge: false
+  delete_branch_on_merge: true
+
+branches:
+  - name: master
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 0
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: false
+      required_status_checks:
+        strict: true
+        contexts:
+          - "Lint / ruff + mypy"
+          - "CodeQL / analyze"
+          - "Gitleaks / secret scan"
+          - "Trivy / filesystem scan"
+      enforce_admins: false
+      required_linear_history: true
+      allow_force_pushes: false
+      allow_deletions: false
+      required_conversation_resolution: true

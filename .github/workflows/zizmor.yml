@@ -1,0 +1,37 @@
+name: Zizmor
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: "37 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    name: workflow audit
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7.4.0
+      - name: Install zizmor
+        run: uv tool install zizmor
+      - name: Run zizmor
+        run: zizmor --format sarif . > results.sarif
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@458d36d7d4f47d0dd16ca424c1d3cda0060f1360 # v3.35.5
+        with:
+          sarif_file: results.sarif
+          category: zizmor
