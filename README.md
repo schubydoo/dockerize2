@@ -23,6 +23,53 @@ can install it from this repository:
 The installed console script is still called `dockerize` so existing
 scripts continue to work unchanged.
 
+## Run from a container
+
+A pre-built multi-arch image is available at
+`ghcr.io/schubydoo/dockerize2`. Tags follow `:latest`, `:0.3`, `:0.3.0`,
+`:sha-<short>`. Supported architectures:
+
+- `linux/amd64`
+- `linux/arm64`
+- `linux/arm/v7` (32-bit hardware-float ABI — Raspberry Pi 32-bit, etc.)
+
+Recommended invocation — emit an OCI archive so you don't need to mount
+the Docker socket:
+
+```bash
+docker run --rm \
+  -v "$PWD":/work \
+  -v /usr/sbin/thttpd:/usr/sbin/thttpd:ro \
+  ghcr.io/schubydoo/dockerize2:latest \
+    -t thttpd \
+    --output-oci /work/thttpd.oci.tar \
+    --sbom /work/thttpd.sbom.spdx.json \
+    --compress \
+    /usr/sbin/thttpd
+```
+
+Then on the host:
+
+```bash
+docker load -i thttpd.oci.tar
+```
+
+Classic mode (mounts the daemon socket — less ideal but supported):
+
+```bash
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /usr/sbin/thttpd:/usr/sbin/thttpd:ro \
+  ghcr.io/schubydoo/dockerize2:latest \
+    -t thttpd /usr/sbin/thttpd
+```
+
+Run the health check:
+
+```bash
+docker run --rm ghcr.io/schubydoo/dockerize2:latest doctor
+```
+
 ## Synopsis
 
     usage: dockerize [-h] [--tag TAG] [--cmd CMD] [--entrypoint ENTRYPOINT]

@@ -1,0 +1,66 @@
+# --- VCS ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Python build/cache ---
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+.tox/
+.nox/
+cython_debug/
+
+# --- Virtualenvs / dev tooling ---
+.venv/
+venv/
+env/
+.uv-cache/
+
+# --- Tests (not shipped in the runtime image) ---
+tests/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.fleet/
+.zed/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- AI / agent ---
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+AGENTS.md
+.claude/
+.cursor/
+.cursorrules
+.aider*
+.gemini/
+.continue/
+.codeium/
+.windsurf/
+
+# --- Local secrets / artefacts ---
+.env
+.env.*
+*.pem
+*.key
+sbom*.json
+sbom*.spdx.json
+*.oci.tar
+
+# --- Plan / scratch files ---
+.github/copilot-instructions.md
