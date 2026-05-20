@@ -17,6 +17,8 @@ from jinja2 import Environment, PackageLoader
 from . import __version__
 from .compress import CompressionLevel, compress_tree
 from .depsolver import DepSolver
+from .oci_output import build_oci_archive
+from .sbom import SBOMFormat, generate_sbom
 from .security import is_sensitive_path
 
 DEFAULT_NSS_MODULES: tuple[str, ...] = ("files", "dns")
@@ -100,6 +102,9 @@ class Dockerize:
         extra_labels: dict[str, str] | None = None,
         compress_level: CompressionLevel | None = None,
         compress_libs: bool = False,
+        sbom_path: Path | None = None,
+        sbom_format: SBOMFormat = SBOMFormat.SPDX_JSON,
+        output_oci: Path | None = None,
     ) -> None:
         self.docker: dict[str, str] = {
             "runtime": runtime if runtime else "docker",
@@ -125,6 +130,9 @@ class Dockerize:
         self.extra_labels: dict[str, str] = dict(extra_labels or {})
         self.compress_level: CompressionLevel | None = compress_level
         self.compress_libs: bool = compress_libs
+        self.sbom_path: Path | None = sbom_path
+        self.sbom_format: SBOMFormat = sbom_format
+        self.output_oci: Path | None = output_oci
 
         self.users: list[str] = []
         self.groups: list[str] = []
@@ -220,6 +228,8 @@ class Dockerize:
             self.compress()
             self.populate()
             self.generate_dockerfile()
+            if self.sbom_path is not None:
+                self.generate_sbom()
             if self._build_image:
                 self.build_image()
         finally:
@@ -376,8 +386,26 @@ class Dockerize:
             include_libs=self.compress_libs,
         )
 
+    def generate_sbom(self) -> Path:
+        """Run ``syft`` against the build context and write an SBOM."""
+        assert self.targetdir is not None
+        assert self.sbom_path is not None
+        return generate_sbom(self.targetdir, self.sbom_path, sbom_format=self.sbom_format)
+
     def build_image(self) -> None:
         import subprocess
+
+        assert self.targetdir is not None
+
+        # --output-oci mode: emit an OCI archive without a docker daemon socket.
+        if self.output_oci is not None:
+            build_oci_archive(
+                self.targetdir,
+                self.output_oci,
+                tag=self.docker.get("tag"),
+                runtime=self.docker["runtime"],
+            )
+            return
 
         runtime_name = self.docker["runtime"]
         runtime_path = shutil.which(runtime_name)
@@ -390,7 +418,6 @@ class Dockerize:
         cmd: list[str] = [runtime_path, self.docker["buildcmd"]]
         if "tag" in self.docker:
             cmd += ["-t", self.docker["tag"]]
-        assert self.targetdir is not None
         cmd += [str(self.targetdir)]
 
         LOG.info('building Docker image using "%s"', " ".join(cmd))

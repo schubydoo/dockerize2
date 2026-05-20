@@ -50,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Already-compressed files are detected via `upx -t` and skipped, so the
   operation is idempotent. Missing `upx` yields a clear, actionable
   error.
+- **`--sbom PATH`**: generates a Software Bill of Materials of the build
+  context via `syft`. `--sbom-format {spdx-json,cyclonedx-json,syft-json}`
+  (default `spdx-json`).
+- **`--output-oci PATH`**: emits an OCI image archive to `PATH` without
+  pushing into a daemon. Uses `docker buildx` when available; falls back
+  to `podman build` + `podman save --format oci-archive`. This is the
+  recommended mode when running `dockerize` from inside a container —
+  no need to mount `/var/run/docker.sock`.
 
 ### Removed
 - Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`
