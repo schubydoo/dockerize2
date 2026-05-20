@@ -30,14 +30,23 @@ branches:
         dismiss_stale_reviews: true
         require_code_owner_reviews: false
       required_status_checks:
+        # Context names must match the check-run names GitHub records
+        # exactly — that's the job's `name:` field, not "workflow / job".
+        # The check must also have run on the repo at least once before
+        # it can be marked required. These four have, per
+        # `gh api repos/.../commits/master/check-runs`.
         strict: true
         contexts:
-          - "Lint / ruff + mypy"
-          - "CodeQL / analyze"
-          - "Gitleaks / secret scan"
-          - "Trivy / filesystem scan"
-      enforce_admins: false
+          - "ruff + mypy"
+          - "analyze (python)"
+          - "secret scan"
+          - "filesystem scan"
+      # `null` (not `false`) — the Probot Settings App rejects `false` here
+      # silently. See repository-settings/app#923 (comment 2200600178).
+      enforce_admins: null
       required_linear_history: true
       allow_force_pushes: false
       allow_deletions: false
       required_conversation_resolution: true
+      # Same `null`-vs-empty-array gotcha; explicit `null` for safety.
+      restrictions: null
