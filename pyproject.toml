@@ -107,3 +107,24 @@ files = ["dockerize"]
 [[tool.mypy.overrides]]
 module = ["elftools.*"]
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: opt-in integration tests (need docker/podman + Linux)",
+]
+
+[tool.coverage.run]
+source = ["dockerize"]
+branch = true
+omit = ["dockerize/templates/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
