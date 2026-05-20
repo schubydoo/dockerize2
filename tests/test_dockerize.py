@@ -213,10 +213,13 @@ def test_expand_glob_pattern_matches(tmp_path: Path) -> None:
 
 def test_build_invokes_runtime(tmp_path: Path) -> None:
     app = Dockerize(targetdir=str(tmp_path), tag="img:test", runtime="podman")
-    with patch("subprocess.check_call") as run:
+    with (
+        patch("shutil.which", return_value="/usr/bin/podman"),
+        patch("subprocess.check_call") as run,
+    ):
         app.build_image()
     args = run.call_args.args[0]
-    assert args[0] == "podman"
+    assert args[0] == "/usr/bin/podman"
     assert args[1] == "build"
     assert "-t" in args
     assert "img:test" in args

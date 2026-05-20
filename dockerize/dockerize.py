@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import logging
 import os
@@ -13,7 +14,12 @@ from pathlib import Path
 
 from jinja2 import Environment, PackageLoader
 
+from . import __version__
 from .depsolver import DepSolver
+from .security import is_sensitive_path
+
+DEFAULT_NSS_MODULES: tuple[str, ...] = ("files", "dns")
+PROJECT_SOURCE_URL = "https://github.com/schubydoo/dockerize2"
 
 LOG = logging.getLogger(__name__)
 
@@ -49,6 +55,11 @@ def _copy_symlink(src: Path, dst: Path) -> None:
     dst.symlink_to(src.readlink())
 
 
+def _log_rmtree_error(_func: object, path: object, exc_info: object) -> None:
+    """``shutil.rmtree`` error callback: log instead of silently swallowing."""
+    LOG.warning("failed to remove %s during cleanup: %s", path, exc_info)
+
+
 def _expand_glob(pattern: str) -> list[Path]:
     """Expand a possibly-absolute glob pattern into matching ``Path`` objects.
 
@@ -82,6 +93,10 @@ class Dockerize:
         buildcmd: str | None = None,
         symlinks: SymlinkOptions = SymlinkOptions.PRESERVE,
         build: bool = True,
+        no_host_lookup: bool = False,
+        allow_sensitive: bool = False,
+        nss_modules: tuple[str, ...] = DEFAULT_NSS_MODULES,
+        extra_labels: dict[str, str] | None = None,
     ) -> None:
         self.docker: dict[str, str] = {
             "runtime": runtime if runtime else "docker",
@@ -101,6 +116,10 @@ class Dockerize:
         self.targetdir: Path | None = Path(targetdir) if targetdir else None
         self.symlinks: SymlinkOptions = symlinks
         self._build_image: bool = build
+        self.no_host_lookup: bool = no_host_lookup
+        self.allow_sensitive: bool = allow_sensitive
+        self.nss_modules: tuple[str, ...] = tuple(nss_modules)
+        self.extra_labels: dict[str, str] = dict(extra_labels or {})
 
         self.users: list[str] = []
         self.groups: list[str] = []
@@ -111,12 +130,17 @@ class Dockerize:
         """Import a user into ``/etc/passwd`` on the image.
 
         Accepts a username (looked up via ``getpwnam`` — Linux-only) or a
-        colon-delimited password entry used verbatim (any platform).
+        colon-delimited password entry used verbatim. When ``no_host_lookup``
+        is true, bare names are rejected so host ``/etc/passwd`` cannot leak
+        into the image.
         """
         LOG.info("adding user %s", user)
         if ":" in user:
             self.users.append(user)
             return
+
+        if self.no_host_lookup:
+            raise ValueError(f"{user!r}: --no-host-lookup is set; provide a colon-delimited entry")
 
         import grp
         import pwd
@@ -132,12 +156,15 @@ class Dockerize:
         """Import a group into ``/etc/group`` on the image.
 
         Accepts a group name (Linux-only) or a colon-delimited entry used
-        verbatim (any platform).
+        verbatim. When ``no_host_lookup`` is true, bare names are rejected.
         """
         LOG.info("adding group %s", group)
         if ":" in group:
             self.groups.append(group)
             return
+
+        if self.no_host_lookup:
+            raise ValueError(f"{group!r}: --no-host-lookup is set; provide a colon-delimited entry")
 
         import grp
 
@@ -145,12 +172,23 @@ class Dockerize:
         self.groups.append(":".join(str(x) for x in grent))
 
     def add_file(self, src: str, dst: str | None = None) -> None:
-        """Queue a file to be installed into the image."""
+        """Queue a file to be installed into the image.
+
+        Refuses host paths matching known sensitive patterns (``/etc/shadow``,
+        SSH/AWS/Docker/kube credentials, etc.) unless ``allow_sensitive`` is
+        true. This guards against accidental credential leakage into the
+        resulting image.
+        """
         if dst is None:
             dst = src
 
         if not dst.startswith("/"):
             raise ValueError(f"{dst}: container paths must be fully qualified")
+
+        if not self.allow_sensitive and is_sensitive_path(src):
+            raise ValueError(
+                f"{src}: refused as sensitive host path. Pass --allow-sensitive to override."
+            )
 
         self.paths.add((src, dst))
 
@@ -180,13 +218,15 @@ class Dockerize:
                 self.build_image()
         finally:
             if cleanup and self.targetdir is not None:
-                shutil.rmtree(self.targetdir, ignore_errors=True)
+                shutil.rmtree(self.targetdir, onerror=_log_rmtree_error)
 
     def generate_dockerfile(self) -> None:
         LOG.info("generating Dockerfile")
         assert self.targetdir is not None
         tmpl = self.env.get_template("Dockerfile")
-        (self.targetdir / "Dockerfile").write_text(tmpl.render(controller=self, docker=self.docker))
+        (self.targetdir / "Dockerfile").write_text(
+            tmpl.render(controller=self, docker=self.docker, labels=self.oci_labels())
+        )
 
     def populate(self) -> None:
         """Render and write ``/etc/passwd``, ``/etc/group``, ``nsswitch.conf``."""
@@ -299,14 +339,17 @@ class Dockerize:
         for src in deps.deps:
             self.copy_file(src, symlinks=SymlinkOptions.COPY_ALL)
 
-        # Install basic nss libraries so resolver lookups work in the image.
+        # Install nss libraries matching the configured allowlist so that
+        # resolver lookups work in the image. ``libresolv*`` is always
+        # included because the ``dns`` resolver depends on it transitively.
+        allowed_nss_prefixes = tuple(f"libnss_{mod}" for mod in self.nss_modules)
         for libdir in deps.prefixes():
             libdir_path = Path(libdir)
             if not libdir_path.is_dir():
                 continue
             for nsslib in libdir_path.iterdir():
                 name = nsslib.name
-                if name.startswith("libnss") or name.startswith("libresolv"):
+                if name.startswith(allowed_nss_prefixes) or name.startswith("libresolv"):
                     LOG.info("copying %s", nsslib)
                     self.copy_file(nsslib, symlinks=SymlinkOptions.COPY_ALL)
 
@@ -319,7 +362,15 @@ class Dockerize:
     def build_image(self) -> None:
         import subprocess
 
-        cmd: list[str] = [self.docker["runtime"], self.docker["buildcmd"]]
+        runtime_name = self.docker["runtime"]
+        runtime_path = shutil.which(runtime_name)
+        if runtime_path is None:
+            raise FileNotFoundError(
+                f"runtime {runtime_name!r} not found on PATH; "
+                "install it or pass --runtime / --no-build."
+            )
+
+        cmd: list[str] = [runtime_path, self.docker["buildcmd"]]
         if "tag" in self.docker:
             cmd += ["-t", self.docker["tag"]]
         assert self.targetdir is not None
@@ -327,3 +378,17 @@ class Dockerize:
 
         LOG.info('building Docker image using "%s"', " ".join(cmd))
         subprocess.check_call(cmd)
+
+    def oci_labels(self) -> dict[str, str]:
+        """Return the OCI image labels that should be written to the Dockerfile."""
+        labels: dict[str, str] = {
+            "org.opencontainers.image.created": _dt.datetime.now(_dt.UTC).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "org.opencontainers.image.source": PROJECT_SOURCE_URL,
+            "org.opencontainers.image.version": __version__,
+            "org.opencontainers.image.title": self.docker.get("tag", "dockerize2-image"),
+            "org.opencontainers.image.licenses": "GPL-3.0-or-later",
+        }
+        labels.update(self.extra_labels)
+        return labels
