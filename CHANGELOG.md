@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to `podman build` + `podman save --format oci-archive`. This is the
   recommended mode when running `dockerize` from inside a container —
   no need to mount `/var/run/docker.sock`.
+- **`dockerize doctor`** subcommand checks the host for Python (>=3.11),
+  `docker` / `podman`, `upx`, `syft`, and `docker buildx`. Exits 0 when
+  a usable build environment is detected, 1 otherwise. Cuts support
+  load: a single command tells you what's missing.
 
 ### Removed
 - Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`
