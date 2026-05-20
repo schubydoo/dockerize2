@@ -84,14 +84,13 @@ select = [
     "UP",   # pyupgrade
     "SIM",  # flake8-simplify
     "RUF",  # ruff-specific
+    "PTH",  # flake8-use-pathlib
     "TID",  # flake8-tidy-imports
     "C4",   # flake8-comprehensions
 ]
 ignore = [
     "E501",  # line length handled by formatter
 ]
-# PTH (pathlib) rules will be enabled once the rsync->shutil refactor (PR #4)
-# lands; until then pathlib churn would conflict with that PR's diff.
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
