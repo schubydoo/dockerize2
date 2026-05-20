@@ -10,11 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Fork groundwork: `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`,
   `NOTICE`, comprehensive `.gitignore`, fork-status notice in `README.md`.
+- PEP 621 packaging via `pyproject.toml` (hatchling backend) + `uv.lock`.
+- `[dev]` optional-dependencies group: `pytest`, `pytest-cov`, `ruff`,
+  `mypy`, `pre-commit`.
 
 ### Changed
 - Repository relaunched as the successor to `larsks/dockerize`, which
   has been dormant since 2020. Upstream is preserved as a historical
   remote.
+- Minimum Python bumped to **3.11** (testing matrix: 3.11 / 3.12 / 3.13).
+- Version bumped to `0.3.0.dev0` to mark the start of the fork's
+  development cycle.
+
+### Removed
+- Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`
+  (replaced by `pyproject.toml`).
 
 ## Ideas / Roadmap
 
