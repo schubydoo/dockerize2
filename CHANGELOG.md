@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ruff` and `mypy --strict` configured; both pass cleanly on the package.
 - Type hints throughout `dockerize/`; `argparse` namespace replaced with a
   typed `CliArgs` dataclass via `dockerize.main.parse_args`.
+- Static-binary fast path: ELF binaries with no `.interp` section
+  (statically linked Go/Rust/musl/busybox-static binaries) skip the
+  dynamic-loader step entirely. They are copied as-is.
+
+### Removed
+- Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`
+  (replaced by `pyproject.toml`).
+- **Host-tool dependencies removed**:
+  - `rsync` is no longer required; `shutil.copytree`/`shutil.copy2`
+    handle the copy with equivalent symlink modes.
+  - `objdump` is no longer required; `pyelftools` parses the `.interp`
+    section directly.
 
 ### Changed
 - Repository relaunched as the successor to `larsks/dockerize`, which
@@ -24,10 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Minimum Python bumped to **3.11** (testing matrix: 3.11 / 3.12 / 3.13).
 - Version bumped to `0.3.0.dev0` to mark the start of the fork's
   development cycle.
-
-### Removed
-- Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`
-  (replaced by `pyproject.toml`).
 
 ## Ideas / Roadmap
 
