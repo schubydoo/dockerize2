@@ -1,18 +1,15 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
+"""Core ``Dockerize`` orchestration: copy files, resolve deps, render templates."""
 
-from __future__ import absolute_import
+from __future__ import annotations
 
-import glob
-import grp
 import json
 import logging
 import os
-import pwd
 import shlex
 import shutil
-import subprocess
 import tempfile
+from enum import Enum
+from pathlib import Path
 
 from jinja2 import Environment, PackageLoader
 
@@ -21,110 +18,159 @@ from .depsolver import DepSolver
 LOG = logging.getLogger(__name__)
 
 
-# Link handling constants
-class SymlinkOptions(object):
+class SymlinkOptions(Enum):
+    """How symlinks are handled when copying files into the image."""
+
     PRESERVE = 1
     COPY_UNSAFE = 2
     SKIP_UNSAFE = 3
     COPY_ALL = 4
 
 
-class Dockerize(object):
+def _is_unsafe_symlink(link: Path) -> bool:
+    """An "unsafe" symlink resolves outside its own parent directory.
 
-    def __init__(self,
-                 cmd=None,
-                 entrypoint=None,
-                 targetdir=None,
-                 tag=None,
-                 runtime=None,
-                 buildcmd=None,
-                 symlinks=SymlinkOptions.PRESERVE,
-                 build=True):
+    Mirrors rsync's ``--safe-links`` semantics closely enough for our purposes:
+    absolute symlinks and symlinks whose target escapes the link's parent are
+    treated as unsafe.
+    """
+    raw = link.readlink()
+    if raw.is_absolute():
+        return True
+    parent = link.parent.resolve()
+    target = (link.parent / raw).resolve(strict=False)
+    return parent != target and parent not in target.parents
 
-        self.docker = {}
-        self.docker['runtime'] = runtime if runtime else 'docker'
-        self.docker['buildcmd'] = buildcmd if buildcmd else 'build'
+
+def _copy_symlink(src: Path, dst: Path) -> None:
+    """Replicate a symlink at ``dst`` pointing at ``src``'s target."""
+    if dst.exists() or dst.is_symlink():
+        dst.unlink()
+    dst.symlink_to(src.readlink())
+
+
+def _expand_glob(pattern: str) -> list[Path]:
+    """Expand a possibly-absolute glob pattern into matching ``Path`` objects.
+
+    If the pattern is a literal path (no metacharacters) and the file exists,
+    the path is returned as-is. Otherwise the pattern is interpreted via
+    :py:meth:`Path.glob` rooted at ``/`` (absolute pattern) or the cwd.
+    """
+    has_meta = any(ch in pattern for ch in "*?[")
+    if not has_meta:
+        return [Path(pattern)]
+
+    p = Path(pattern)
+    if p.is_absolute():
+        # Path.glob requires a relative pattern from the anchor.
+        anchor = Path(p.anchor)
+        rel = pattern[len(p.anchor) :]
+        return list(anchor.glob(rel))
+    return list(Path.cwd().glob(pattern))
+
+
+class Dockerize:
+    """Build a minimal Docker image from a set of dynamically linked binaries."""
+
+    def __init__(
+        self,
+        cmd: str | None = None,
+        entrypoint: str | None = None,
+        targetdir: str | None = None,
+        tag: str | None = None,
+        runtime: str | None = None,
+        buildcmd: str | None = None,
+        symlinks: SymlinkOptions = SymlinkOptions.PRESERVE,
+        build: bool = True,
+    ) -> None:
+        self.docker: dict[str, str] = {
+            "runtime": runtime if runtime else "docker",
+            "buildcmd": buildcmd if buildcmd else "build",
+        }
 
         if cmd:
-            self.docker['cmd'] = json.dumps(shlex.split(cmd))
-            LOG.debug('CMD: %s', self.docker['cmd'])
+            self.docker["cmd"] = json.dumps(shlex.split(cmd))
+            LOG.debug("CMD: %s", self.docker["cmd"])
         if entrypoint:
-            self.docker['entrypoint'] = json.dumps(shlex.split(entrypoint))
-            LOG.debug('ENTRYPOINT: %s', self.docker['entrypoint'])
+            self.docker["entrypoint"] = json.dumps(shlex.split(entrypoint))
+            LOG.debug("ENTRYPOINT: %s", self.docker["entrypoint"])
         if tag:
-            self.docker['tag'] = tag
-            LOG.debug('tag: %s', self.docker['tag'])
+            self.docker["tag"] = tag
+            LOG.debug("tag: %s", self.docker["tag"])
 
-        self.targetdir = targetdir
-        self.symlinks = symlinks
-        self._build_image = build
+        self.targetdir: Path | None = Path(targetdir) if targetdir else None
+        self.symlinks: SymlinkOptions = symlinks
+        self._build_image: bool = build
 
-        self.users = []
-        self.groups = []
-        self.paths = set()
-        self.env = Environment(loader=PackageLoader('dockerize', 'templates'))
+        self.users: list[str] = []
+        self.groups: list[str] = []
+        self.paths: set[tuple[str, str]] = set()
+        self.env: Environment = Environment(loader=PackageLoader("dockerize", "templates"))
 
-    def add_user(self, user):
-        '''Import a user into /etc/passwd on the image.  You can specify a
-        username, in which case add_user will look up the password entry
-        via getpwnam(), or you can provide a colon-delimited password
-        entry, which will be used verbatim.'''
+    def add_user(self, user: str) -> None:
+        """Import a user into ``/etc/passwd`` on the image.
 
-        LOG.info('adding user %s', user)
-        if ':' in user:
+        Accepts a username (looked up via ``getpwnam`` — Linux-only) or a
+        colon-delimited password entry used verbatim (any platform).
+        """
+        LOG.info("adding user %s", user)
+        if ":" in user:
             self.users.append(user)
-        else:
-            pwent = pwd.getpwnam(user)
-            self.users.append(':'.join(str(x) for x in pwent))
-            grent = grp.getgrgid(pwent.pw_gid)
-            self.groups.append(':'.join(str(x) for x in
-                                        grent[:3] + (','.join(grent[3]),)
-                                        if not isinstance(x, list)))
+            return
 
-    def add_group(self, group):
-        '''Import a group into /etc/group on the image.  You can specify a
-        group name, in which case add_group will look up the group entry
-        via getgrnam(), or you can provide a colon-delimited group entry,
-        which will be used verbatim.'''
+        import grp
+        import pwd
 
-        LOG.info('adding group %s', group)
-        if ':' in group:
+        pwent = pwd.getpwnam(user)  # type: ignore[attr-defined, unused-ignore]
+        self.users.append(":".join(str(x) for x in pwent))
+        grent = grp.getgrgid(pwent.pw_gid)  # type: ignore[attr-defined, unused-ignore]
+        self.groups.append(
+            ":".join(str(x) for x in (*grent[:3], ",".join(grent[3])) if not isinstance(x, list))
+        )
+
+    def add_group(self, group: str) -> None:
+        """Import a group into ``/etc/group`` on the image.
+
+        Accepts a group name (Linux-only) or a colon-delimited entry used
+        verbatim (any platform).
+        """
+        LOG.info("adding group %s", group)
+        if ":" in group:
             self.groups.append(group)
-        else:
-            grent = grp.getgrnam(group)
-            self.groups.append(':'.join(str(x) for x in grent))
+            return
 
-    def add_file(self, src, dst=None):
-        '''Add a file to the list of files that will be installed into the
-        image.'''
+        import grp
 
+        grent = grp.getgrnam(group)  # type: ignore[attr-defined, unused-ignore]
+        self.groups.append(":".join(str(x) for x in grent))
+
+    def add_file(self, src: str, dst: str | None = None) -> None:
+        """Queue a file to be installed into the image."""
         if dst is None:
             dst = src
 
-        if not dst.startswith('/'):
-            raise ValueError('%s: container paths must be fully '
-                             'qualified' % dst)
+        if not dst.startswith("/"):
+            raise ValueError(f"{dst}: container paths must be fully qualified")
 
         self.paths.add((src, dst))
 
-    def build(self):
-        '''Call this method to produce a Docker image.  It will either
-        create a temporary working directory or populate a specific
-        directy, depending on the setting of targetdir.  It will populate
-        this will the files you have specified via add_file and any shared
-        library depdencies.  Finally, it will generate a Dockerfile and
-        call "docker build" to build the image.'''
+    def build(self) -> None:
+        """Produce a Docker image.
 
-        LOG.info('start build process')
+        Creates (or reuses) ``targetdir``, copies queued files and their
+        shared-lib dependencies, renders ``/etc/passwd``/``/etc/group``/
+        ``Dockerfile``, then invokes ``<runtime> build`` unless
+        ``build=False`` was passed.
+        """
+        LOG.info("start build process")
         cleanup = False
         try:
-            if not self.targetdir:
-                self.targetdir = tempfile.mkdtemp(prefix='dockerize')
+            if self.targetdir is None:
+                self.targetdir = Path(tempfile.mkdtemp(prefix="dockerize"))
                 cleanup = True
             else:
-                LOG.warning('writing output to %s', self.targetdir)
-                if not os.path.isdir(self.targetdir):
-                    os.mkdir(self.targetdir)
+                LOG.warning("writing output to %s", self.targetdir)
+                self.targetdir.mkdir(parents=True, exist_ok=True)
 
             self.copy_files()
             self.resolve_deps()
@@ -133,106 +179,151 @@ class Dockerize(object):
             if self._build_image:
                 self.build_image()
         finally:
-            if cleanup:
-                shutil.rmtree(self.targetdir,
-                              ignore_errors=True)
+            if cleanup and self.targetdir is not None:
+                shutil.rmtree(self.targetdir, ignore_errors=True)
 
-    def generate_dockerfile(self):
-        LOG.info('generating Dockerfile')
-        tmpl = self.env.get_template('Dockerfile')
-        with open(os.path.join(self.targetdir, 'Dockerfile'), 'w') as fde:
-            fde.write(tmpl.render(controller=self,
-                                  docker=self.docker))
+    def generate_dockerfile(self) -> None:
+        LOG.info("generating Dockerfile")
+        assert self.targetdir is not None
+        tmpl = self.env.get_template("Dockerfile")
+        (self.targetdir / "Dockerfile").write_text(tmpl.render(controller=self, docker=self.docker))
 
-    def makedirs(self, path):
-        if not os.path.isdir(path):
-            os.makedirs(path)
-
-    def populate(self):
-        '''Add config files to the image using built-in templates.  This is
-        responsbile for creating /etc/passwd and /etc/group, among other
-        files.'''
-
-        LOG.info('populating misc config files')
-        self.makedirs(os.path.join(self.targetdir, 'etc'))
-        for path in ['passwd', 'group', 'nsswitch.conf']:
+    def populate(self) -> None:
+        """Render and write ``/etc/passwd``, ``/etc/group``, ``nsswitch.conf``."""
+        LOG.info("populating misc config files")
+        assert self.targetdir is not None
+        etc_dir = self.targetdir / "etc"
+        etc_dir.mkdir(parents=True, exist_ok=True)
+        for path in ["passwd", "group", "nsswitch.conf"]:
             tmpl = self.env.get_template(path)
-            with open(os.path.join(self.targetdir, 'etc', path), 'w') as fde:
-                fde.write(tmpl.render(controller=self,
-                                      docker=self.docker,
-                                      users=self.users,
-                                      groups=self.groups))
+            (etc_dir / path).write_text(
+                tmpl.render(
+                    controller=self,
+                    docker=self.docker,
+                    users=self.users,
+                    groups=self.groups,
+                )
+            )
 
-    def copy_file(self, src, dst=None, symlinks=None):
-        '''Copy a file into the image.  This uses "rsync" to perform the
-        actual copy, since rsync has robust handling of directory trees and
-        symlinks.'''
+    def copy_file(
+        self,
+        src: str | Path,
+        dst: str | None = None,
+        symlinks: SymlinkOptions | None = None,
+    ) -> None:
+        """Copy a file or directory tree into the image.
 
+        Uses ``shutil`` (no host ``rsync`` required). ``symlinks`` selects how
+        symlinks encountered during the copy are treated.
+        """
+        src_path = Path(src)
         if dst is None:
-            dst = src
-
+            dst = str(src)
         if symlinks is None:
             symlinks = self.symlinks
 
-        LOG.info('copying file %s to %s', src, dst)
-        target = os.path.join(self.targetdir, dst[1:])
-        target_dir = os.path.dirname(target)
-        self.makedirs(target_dir)
+        LOG.info("copying %s to %s", src_path, dst)
+        assert self.targetdir is not None
+        target = self.targetdir / dst.lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
 
-        cmd = ['rsync', '-a']
+        follow = symlinks in (SymlinkOptions.COPY_ALL, SymlinkOptions.COPY_UNSAFE)
 
-        # Add flag to rsync command line corresponding to the select
-        # symlink handling method.
-        if symlinks == SymlinkOptions.COPY_ALL:
-            cmd.append('-L')
-        elif symlinks == SymlinkOptions.COPY_UNSAFE:
-            cmd.append('--copy-unsafe-links')
-        elif symlinks == SymlinkOptions.SKIP_UNSAFE:
-            cmd.append('--safe-links')
+        if src_path.is_dir() and not src_path.is_symlink():
+            self._copy_tree(src_path, target, symlinks)
+            return
 
-        cmd += [src, target]
+        if (
+            symlinks == SymlinkOptions.SKIP_UNSAFE
+            and src_path.is_symlink()
+            and _is_unsafe_symlink(src_path)
+        ):
+            LOG.debug("skipping unsafe symlink %s", src_path)
+            return
 
-        LOG.info('running: %s', cmd)
-        subprocess.check_call(cmd)
+        if target.exists() or target.is_symlink():
+            if target.is_dir() and not target.is_symlink():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
 
-    def resolve_deps(self):
-        '''Uses the dockerize.depsolver.DepSolver class to find all the shared
-        library dependencies of files installed into the Docker image.'''
+        if src_path.is_symlink() and not follow:
+            _copy_symlink(src_path, target)
+        else:
+            shutil.copy2(src_path, target, follow_symlinks=follow)
 
+    def _copy_tree(self, src: Path, dst: Path, mode: SymlinkOptions) -> None:
+        """Recursive copy with symlink handling matching ``mode``."""
+        preserve_links = mode != SymlinkOptions.COPY_ALL
+
+        if dst.exists() and not dst.is_symlink():
+            shutil.rmtree(dst)
+        elif dst.is_symlink():
+            dst.unlink()
+
+        if mode in (SymlinkOptions.PRESERVE, SymlinkOptions.COPY_ALL):
+            shutil.copytree(src, dst, symlinks=preserve_links)
+            return
+
+        # COPY_UNSAFE / SKIP_UNSAFE need per-symlink decisions.
+        dst.mkdir(parents=True, exist_ok=True)
+        for entry in src.iterdir():
+            entry_dst = dst / entry.name
+            if entry.is_symlink():
+                if _is_unsafe_symlink(entry):
+                    if mode == SymlinkOptions.SKIP_UNSAFE:
+                        LOG.debug("skipping unsafe symlink %s", entry)
+                        continue
+                    # COPY_UNSAFE: dereference into a real file/dir copy
+                    if entry.is_dir():
+                        shutil.copytree(entry, entry_dst, symlinks=False)
+                    else:
+                        shutil.copy2(entry, entry_dst, follow_symlinks=True)
+                else:
+                    _copy_symlink(entry, entry_dst)
+            elif entry.is_dir():
+                self._copy_tree(entry, entry_dst, mode)
+            else:
+                shutil.copy2(entry, entry_dst, follow_symlinks=False)
+
+    def resolve_deps(self) -> None:
+        """Walk the image tree and pull in shared-library dependencies."""
         deps = DepSolver()
+        assert self.targetdir is not None
 
-        # Iterate over all files in the image.
         for root, _, files in os.walk(self.targetdir):
             for name in files:
-                path = os.path.join(root, name)
+                path = Path(root) / name
                 deps.add(path)
 
         for src in deps.deps:
             self.copy_file(src, symlinks=SymlinkOptions.COPY_ALL)
 
-        # Install some basic nss libraries to permit programs to resolve
-        # users, groups, and hosts.
+        # Install basic nss libraries so resolver lookups work in the image.
         for libdir in deps.prefixes():
-            for nsslib in os.listdir(libdir):
-                if nsslib.startswith('libnss') or nsslib.startswith('libresolv'):
-                    src = os.path.join(libdir, nsslib)
-                    LOG.info('copying %s', src)
-                    self.copy_file(src, symlinks=SymlinkOptions.COPY_ALL)
+            libdir_path = Path(libdir)
+            if not libdir_path.is_dir():
+                continue
+            for nsslib in libdir_path.iterdir():
+                name = nsslib.name
+                if name.startswith("libnss") or name.startswith("libresolv"):
+                    LOG.info("copying %s", nsslib)
+                    self.copy_file(nsslib, symlinks=SymlinkOptions.COPY_ALL)
 
-    def copy_files(self):
-        '''Process the list of paths generated via add_file and copy items
-        into the image.'''
-
+    def copy_files(self) -> None:
+        """Copy every file queued via :py:meth:`add_file` into the image."""
         for src, dst in self.paths:
-            for srcitem in glob.iglob(src):
+            for srcitem in _expand_glob(src):
                 self.copy_file(srcitem, dst)
 
-    def build_image(self):
-        cmd = [self.docker['runtime'], self.docker['buildcmd']]
-        if 'tag' in self.docker:
-            cmd += ['-t', self.docker['tag']]
-        cmd += [self.targetdir]
+    def build_image(self) -> None:
+        import subprocess
 
-        LOG.info('building Docker image using "%s"', ' '.join(cmd))
+        cmd: list[str] = [self.docker["runtime"], self.docker["buildcmd"]]
+        if "tag" in self.docker:
+            cmd += ["-t", self.docker["tag"]]
+        assert self.targetdir is not None
+        cmd += [str(self.targetdir)]
 
+        LOG.info('building Docker image using "%s"', " ".join(cmd))
         subprocess.check_call(cmd)
