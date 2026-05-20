@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass, field
 
 from . import __description__, __program__, __version__
-from .dockerize import Dockerize, SymlinkOptions
+from .dockerize import DEFAULT_NSS_MODULES, Dockerize, SymlinkOptions
 
 LOG = logging.getLogger(__name__)
 
@@ -41,6 +41,10 @@ class CliArgs:
     runtime: str = "docker"
     buildcmd: str = "build"
     loglevel: int = logging.WARN
+    no_host_lookup: bool = False
+    allow_sensitive: bool = False
+    nss_modules: tuple[str, ...] = DEFAULT_NSS_MODULES
+    extra_labels: dict[str, str] = field(default_factory=dict)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -97,6 +101,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Add common file manipulation tools",
     )
 
+    security_group = parser.add_argument_group("Security options")
+    security_group.add_argument(
+        "--no-host-lookup",
+        action="store_true",
+        help="Reject bare user/group names; require colon-delimited entries.",
+    )
+    security_group.add_argument(
+        "--allow-sensitive",
+        action="store_true",
+        help="Allow copying known-sensitive host paths (/etc/shadow, ~/.ssh/*, etc.).",
+    )
+    security_group.add_argument(
+        "--nss-modules",
+        default=",".join(DEFAULT_NSS_MODULES),
+        help=(
+            "Comma-separated list of nss modules to copy into the image "
+            "(default: files,dns). Limits CVE surface vs. copying every libnss*."
+        ),
+    )
+    security_group.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Add an OCI image label. Repeatable.",
+    )
+
     parser.add_argument(
         "--runtime",
         "-R",
@@ -150,6 +181,15 @@ def parse_args(argv: list[str] | None = None) -> CliArgs:
     if len(ns.paths) == 1 and not entrypoint:
         entrypoint = ns.paths[0]
 
+    nss_modules = tuple(m.strip() for m in ns.nss_modules.split(",") if m.strip())
+
+    extra_labels: dict[str, str] = {}
+    for raw in ns.label:
+        if "=" not in raw:
+            parser.error(f"--label {raw!r}: expected KEY=VALUE")
+        key, value = raw.split("=", 1)
+        extra_labels[key.strip()] = value
+
     return CliArgs(
         paths=list(ns.paths),
         tag=ns.tag,
@@ -165,6 +205,10 @@ def parse_args(argv: list[str] | None = None) -> CliArgs:
         runtime=ns.runtime,
         buildcmd=ns.buildcmd,
         loglevel=ns.loglevel,
+        no_host_lookup=ns.no_host_lookup,
+        allow_sensitive=ns.allow_sensitive,
+        nss_modules=nss_modules,
+        extra_labels=extra_labels,
     )
 
 
@@ -182,6 +226,10 @@ def main(argv: list[str] | None = None) -> None:
         targetdir=args.output_dir,
         build=not args.no_build,
         symlinks=args.symlinks,
+        no_host_lookup=args.no_host_lookup,
+        allow_sensitive=args.allow_sensitive,
+        nss_modules=args.nss_modules,
+        extra_labels=args.extra_labels,
     )
 
     for path in args.paths:

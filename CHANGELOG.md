@@ -23,6 +23,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `main`. `@pytest.mark.integration` + `--run-integration` opt-in for the
   Linux-only end-to-end build test. Symlink-dependent tests skip on
   Windows (no elevated permissions assumed).
+- **Security hardening**:
+  - `--allow-sensitive` flag (default off) and a built-in refusal list
+    for known-credential paths (`/etc/shadow`, `~/.ssh/*`, `~/.aws/*`,
+    `~/.docker/config.json`, `~/.kube/config`, `~/.netrc`, `~/.gitconfig`).
+  - `--no-host-lookup` flag — rejects bare user/group names so the host
+    `/etc/passwd` and `/etc/group` cannot leak into the image.
+  - `--nss-modules` allowlist (default: `files,dns`) — only matching
+    `libnss_<module>*` libs are copied (previously *all* libnss/libresolv
+    libs from each dep prefix were copied, e.g. `libnss_systemd`,
+    `libnss_winbind`, etc.).
+  - Dynamic-loader invocation now runs with a sanitised env (no `LD_*`)
+    and a 15-second hard timeout.
+  - `shutil.which` resolves `--runtime` to an absolute path; missing
+    runtime yields a clear `FileNotFoundError` instead of a confusing
+    subprocess failure.
+  - `shutil.rmtree` cleanup failures are now logged at `WARNING` instead
+    of being silently swallowed.
+  - **Dockerfile** template emits OCI `org.opencontainers.image.*`
+    labels (`title`, `version`, `source`, `licenses`, `created`).
+    Customisable via `--label KEY=VALUE` (repeatable).
 
 ### Removed
 - Legacy `setup.py`, `setup.cfg`, `MANIFEST.in`, `requirements.txt`

@@ -17,6 +17,10 @@ from pathlib import Path, PurePosixPath
 from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
 
+from .security import loader_env
+
+LOADER_TIMEOUT_SECONDS = 15
+
 LOG = logging.getLogger(__name__)
 
 ELF_MAGIC = b"\x7fELF"
@@ -82,11 +86,27 @@ class DepSolver:
         self._collect_dynamic_deps(p, interpreter)
 
     def _collect_dynamic_deps(self, path: Path, interpreter: str) -> None:
-        """Invoke the dynamic loader with ``--list`` and harvest dep paths."""
-        out = subprocess.check_output(
-            [interpreter, "--list", str(path)],
-            encoding="utf-8",
-        )
+        """Invoke the dynamic loader with ``--list`` and harvest dep paths.
+
+        Runs with a sanitised environment (``LD_*`` stripped, ``PATH`` pinned)
+        and a hard timeout. The loader invocation executes code from the
+        target binary's interpreter — do not run against untrusted binaries
+        outside of a sandbox.
+        """
+        try:
+            out = subprocess.check_output(
+                [interpreter, "--list", str(path)],
+                encoding="utf-8",
+                env=loader_env(),
+                timeout=LOADER_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            LOG.warning(
+                "dynamic loader for %s exceeded %ss timeout; skipping",
+                path,
+                LOADER_TIMEOUT_SECONDS,
+            )
+            return
 
         for line in out.splitlines():
             for exp in RE_DEPS:
