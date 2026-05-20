@@ -8,6 +8,12 @@ updates:
       time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
+    # Defer updates for 7 days after upstream release. Buys time to spot a
+    # malicious version that was published and then yanked, mirroring
+    # OpenSSF's recommended cooldown.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     commit-message:
       prefix: "ci"
     labels:
