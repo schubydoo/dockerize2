@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -277,7 +278,19 @@ def parse_args(argv: list[str] | None = None) -> CliArgs:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """``dockerize`` console-script entry point."""
+    """``dockerize`` console-script entry point.
+
+    ``dockerize doctor`` dispatches to the doctor subcommand. Any other
+    invocation falls through to the classic CLI.
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if argv and argv[0] == "doctor":
+        from .doctor import run
+
+        sys.exit(run())
+
     args = parse_args(argv)
     logging.basicConfig(level=args.loglevel)
 
