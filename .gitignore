@@ -1,5 +1,165 @@
-*.py[co]
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
-/build/
-/dist/
-/dockerize.egg-info/
+# Distribution / packaging
+.Python
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Misc logs / local-dev artefacts
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+instance/
+.webassets-cache
+
+# Sphinx
+docs/_build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# PEP 582
+__pypackages__/
+
+# Environments
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Type checkers / linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Cython debug symbols
+cython_debug/
+
+# uv (lockfile IS committed; only cache dirs ignored)
+.uv-cache/
+
+# ---- IDE / editor ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.fleet/
+.zed/
+
+# ---- OS ----
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# ---- AI / agent / assistant artifacts ----
+# Keep AI scratch files, plans, and config out of the repo by default.
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+AGENTS.md
+.claude/
+.cursor/
+.cursorrules
+.cursorignore
+.aider*
+.gemini/
+.continue/
+.codeium/
+.windsurf/
+.copilot/
+.github/copilot-instructions.md
+
+# ---- Local secrets / config ----
+*.pem
+*.key
+*.crt
+*.pfx
+.env.local
+.env.*.local
+secrets.yml
+secrets.yaml
+
+# ---- Build / output artifacts unique to this project ----
+sbom*.json
+sbom*.spdx.json
+*.oci.tar
