@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [master]
   schedule:
-    - cron: "23 3 * * 1"  # Mondays 03:23 UTC
+    - cron: "23 3 * * 1"
 
 permissions:
   contents: read
@@ -25,14 +25,16 @@ jobs:
       matrix:
         language: [python]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@f411752efdf656cb71aa17b755b22c890960da1d # v3.35.5
         with:
           languages: ${{ matrix.language }}
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@f411752efdf656cb71aa17b755b22c890960da1d # v3.35.5
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@f411752efdf656cb71aa17b755b22c890960da1d # v3.35.5
         with:
           category: "/language:${{ matrix.language }}"
