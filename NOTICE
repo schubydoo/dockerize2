@@ -1,0 +1,11 @@
+dockerize2
+Copyright (C) 2026 Schuby <schubydoo@users.noreply.github.com>
+
+This product is a fork and successor of:
+
+    dockerize
+    Copyright (C) Lars Kellogg-Stedman and contributors
+    https://github.com/larsks/dockerize
+
+Both the original work and this fork are licensed under the GNU General
+Public License, Version 3 — see the LICENSE.txt file.

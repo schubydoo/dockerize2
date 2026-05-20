@@ -1,18 +1,27 @@
-# Dockerize
+# dockerize2
 
-Dockerize will pack up your dynamically linked ELF binaries and all
-their dependencies and turn them into a Docker image.
+> **Fork notice.** `dockerize2` is the successor to
+> [larsks/dockerize](https://github.com/larsks/dockerize), which has been
+> dormant since 2020. This repository is where active development now
+> happens. Original copyright is preserved (see [NOTICE](NOTICE) and
+> [LICENSE.txt](LICENSE.txt)); the project remains GPL-3.0-licensed.
 
-Some example images built with this tool are available from:
+`dockerize2` packs up your dynamically linked ELF binaries and all their
+dependencies and turns them into a minimal `FROM scratch` Docker image.
 
-- https://hub.docker.com/u/dockerizeme/
+Some example images built with the original tool are available from:
+
+- <https://hub.docker.com/u/dockerizeme/>
 
 ## Installation
 
-Dockerize is a standard Python package.  You can install it with
-`pip` straight from Github like this:
+`dockerize2` is a standard Python package. Until v0.3.0 lands on PyPI you
+can install it from this repository:
 
-    pip install git+https://github.com/larsks/dockerize
+    pip install git+https://github.com/schubydoo/dockerize2
+
+The installed console script is still called `dockerize` so existing
+scripts continue to work unchanged.
 
 ## Synopsis
 
