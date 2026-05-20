@@ -1,4 +1,6 @@
-__program__ = 'dockerize'
-__version__ = '0.2.2'
-__description__ = 'A tool for creating minimal docker ' \
-                  'images from dynamic ELF binaries.'
+__program__ = "dockerize"
+__version__ = "0.3.0.dev0"
+__description__ = (
+    "Pack a dynamically linked ELF binary and its dependencies into a "
+    "minimal scratch Docker image."
+)
