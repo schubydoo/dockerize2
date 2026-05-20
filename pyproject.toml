@@ -69,3 +69,41 @@ include = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["dockerize"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+    "PTH",  # flake8-use-pathlib
+    "TID",  # flake8-tidy-imports
+    "C4",   # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line length handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+files = ["dockerize"]
+
+[[tool.mypy.overrides]]
+module = ["elftools.*"]
+ignore_missing_imports = true
