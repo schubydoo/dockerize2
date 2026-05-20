@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass, field
 
 from . import __description__, __program__, __version__
+from .compress import CompressionLevel
 from .dockerize import DEFAULT_NSS_MODULES, Dockerize, SymlinkOptions
 
 LOG = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ class CliArgs:
     allow_sensitive: bool = False
     nss_modules: tuple[str, ...] = DEFAULT_NSS_MODULES
     extra_labels: dict[str, str] = field(default_factory=dict)
+    compress_level: CompressionLevel | None = None
+    compress_libs: bool = False
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -128,6 +131,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Add an OCI image label. Repeatable.",
     )
 
+    compress_group = parser.add_argument_group("Compression options")
+    compress_group.add_argument(
+        "--compress",
+        action="store_true",
+        help="Apply UPX compression to ELF executables in the image.",
+    )
+    compress_group.add_argument(
+        "--compress-level",
+        choices=[level.value for level in CompressionLevel],
+        default="best",
+        help="UPX level when --compress is set (default: best).",
+    )
+    compress_group.add_argument(
+        "--compress-libs",
+        action="store_true",
+        help=(
+            "Also compress shared libraries (deprecated UPX feature; "
+            "increases incompatibility risk — use at your own risk)."
+        ),
+    )
+
     parser.add_argument(
         "--runtime",
         "-R",
@@ -190,6 +214,8 @@ def parse_args(argv: list[str] | None = None) -> CliArgs:
         key, value = raw.split("=", 1)
         extra_labels[key.strip()] = value
 
+    compress_level = CompressionLevel(ns.compress_level) if ns.compress else None
+
     return CliArgs(
         paths=list(ns.paths),
         tag=ns.tag,
@@ -209,6 +235,8 @@ def parse_args(argv: list[str] | None = None) -> CliArgs:
         allow_sensitive=ns.allow_sensitive,
         nss_modules=nss_modules,
         extra_labels=extra_labels,
+        compress_level=compress_level,
+        compress_libs=ns.compress_libs,
     )
 
 
@@ -230,6 +258,8 @@ def main(argv: list[str] | None = None) -> None:
         allow_sensitive=args.allow_sensitive,
         nss_modules=args.nss_modules,
         extra_labels=args.extra_labels,
+        compress_level=args.compress_level,
+        compress_libs=args.compress_libs,
     )
 
     for path in args.paths:
