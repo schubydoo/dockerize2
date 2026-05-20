@@ -1,5 +1,7 @@
 # Probot Settings (https://github.com/repository-settings/app)
 # Install the GitHub App on this repo to make settings declarative.
+# Note: the App requires `Administration: Read & write` permission on the repo
+# to apply branch protection rules.
 
 repository:
   name: dockerize2
