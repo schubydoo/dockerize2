@@ -67,7 +67,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive
 
 ARG UPX_VERSION=5.0.2
-ARG BUILDX_VERSION=v0.21.2
+ARG BUILDX_VERSION=v0.34.1
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y \
