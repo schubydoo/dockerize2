@@ -2,14 +2,21 @@
 
 # -----------------------------------------------------------------------------
 # Stage 1: build the wheel.
+#
+# Runs on $BUILDPLATFORM (always amd64 on GH runners). dockerize2 is pure
+# Python so `uv build --wheel` produces a single `py3-none-any` wheel that
+# every per-arch runtime stage can install — no point QEMU-emulating the
+# build on arm64/armv7.
 # -----------------------------------------------------------------------------
-FROM python:3.14-slim-bookworm AS builder
+FROM --platform=$BUILDPLATFORM python:3.14-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN pip install --no-cache-dir uv==0.11.15
+# uv pulled from astral-sh's distroless image, pinned by digest. Satisfies
+# Scorecard's pin-by-hash requirement that a plain `pip install uv` cannot.
+COPY --from=ghcr.io/astral-sh/uv:0.11.15@sha256:e590846f4776907b254ac0f44b5b380347af5d90d668138ca7938d1b0c2f98d3 /uv /usr/local/bin/uv
 
 WORKDIR /src
 COPY pyproject.toml uv.lock README.md LICENSE.txt NOTICE CHANGELOG.md ./
@@ -27,7 +34,7 @@ RUN uv build --wheel
 # Running on $BUILDPLATFORM (amd64 on GH runners) skips QEMU emulation —
 # Go's native cross-compile produces every target arch in seconds.
 # -----------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS syft-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm@sha256:386d475a660466863d9f8c766fec64d7fdad3edac2c6a05020c09534d71edb4b AS syft-builder
 ARG SYFT_VERSION=v1.44.0
 ARG TARGETOS
 ARG TARGETARCH
@@ -52,7 +59,7 @@ RUN set -eux; \
 #   - syft          : --sbom (cross-compiled from source in the syft-builder
 #                     stage above; anchore doesn't ship linux/armv7 binaries)
 # -----------------------------------------------------------------------------
-FROM python:3.14-slim-bookworm
+FROM python:3.14-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
