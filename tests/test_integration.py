@@ -6,6 +6,7 @@ These build a real Docker image from a real binary and require ``docker`` or
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -13,7 +14,9 @@ from pathlib import Path
 
 import pytest
 
+from dockerize.compress import CompressionLevel
 from dockerize.dockerize import Dockerize, SymlinkOptions
+from dockerize.sbom import SBOMFormat
 
 integration_only = pytest.mark.integration
 
@@ -54,3 +57,56 @@ def test_build_image_from_bin_ls(tmp_path: Path) -> None:
         text=True,
     )
     assert "etc" in result or "bin" in result
+
+
+@integration_only
+@linux_only
+def test_build_with_compress_actually_compresses(tmp_path: Path) -> None:
+    """End-to-end: --compress should produce a UPX-compressed binary in the image."""
+    if shutil.which("upx") is None:
+        pytest.skip("upx not installed")
+
+    out = tmp_path / "image"
+    app = Dockerize(
+        targetdir=str(out),
+        tag="dockerize2-test-compress:integration",
+        entrypoint="/bin/ls",
+        symlinks=SymlinkOptions.COPY_ALL,
+        compress_level=CompressionLevel.NORMAL,  # fastest level for CI
+        build=False,
+    )
+    app.add_file("/bin/ls")
+    app.build()
+
+    # UPX-packed binaries carry the "UPX!" magic in their first few KB.
+    packed = (out / "bin" / "ls").read_bytes()
+    assert b"UPX!" in packed[:4096], "binary doesn't appear to be UPX-compressed"
+
+
+@integration_only
+@linux_only
+def test_build_with_sbom_writes_spdx(tmp_path: Path) -> None:
+    """End-to-end: --sbom should produce a parseable SPDX JSON file."""
+    if shutil.which("syft") is None:
+        pytest.skip("syft not installed")
+
+    out = tmp_path / "image"
+    sbom_path = tmp_path / "sbom.spdx.json"
+    app = Dockerize(
+        targetdir=str(out),
+        tag="dockerize2-test-sbom:integration",
+        entrypoint="/bin/ls",
+        symlinks=SymlinkOptions.COPY_ALL,
+        sbom_path=sbom_path,
+        sbom_format=SBOMFormat.SPDX_JSON,
+        build=False,
+    )
+    app.add_file("/bin/ls")
+    app.build()
+
+    assert sbom_path.exists()
+    data = json.loads(sbom_path.read_text())
+    # SPDX 2.x documents declare spdxVersion; SPDX 3.x uses @context.
+    assert "spdxVersion" in data or "@context" in data, (
+        f"output doesn't look like SPDX JSON; top-level keys: {sorted(data.keys())[:6]}"
+    )
