@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Trivy image scan now fails the workflow on findings (the scan and
+  SARIF-upload steps no longer carry `continue-on-error: true`), so a
+  `CRITICAL` or `HIGH` CVE in the runtime image stops merges instead
+  of passing CI silently.
+- Image-scan severity threshold aligned to `CRITICAL,HIGH,MEDIUM` to
+  match the filesystem scan; `MEDIUM` findings in the runtime image
+  are no longer invisible.
+
 ## [0.3.2] - 2026-05-20
 
 ### Fixed
