@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Image-scan severity threshold aligned to `CRITICAL,HIGH,MEDIUM` to
   match the filesystem scan; `MEDIUM` findings in the runtime image
   are no longer invisible.
+- Enabled ruff's `flake8-bandit` (`S`) rule set so security
+  anti-patterns (hardcoded secrets, unsafe `subprocess` usage,
+  insecure temp files, jinja2 autoescape) are caught at lint time.
+  `S603` is project-wide-ignored because the codebase consistently
+  uses list-form `subprocess` argv (`S602` still catches `shell=True`
+  regressions). Test-only rules `S101`/`S108` are scoped to
+  `tests/*` so pytest's `assert` idiom continues to work.
+
+### Changed
+- Replaced all `assert` statements used for defensive runtime
+  validation in `Dockerize` with explicit `RuntimeError` raises via
+  a new `_require_targetdir()` helper. `assert` is a no-op under
+  `python -O`, so the prior checks could silently bypass and surface
+  as `AttributeError` later in the build.
 
 ## [0.3.2] - 2026-05-20
 

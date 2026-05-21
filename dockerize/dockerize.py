@@ -137,7 +137,27 @@ class Dockerize:
         self.users: list[str] = []
         self.groups: list[str] = []
         self.paths: set[tuple[str, str]] = set()
-        self.env: Environment = Environment(loader=PackageLoader("dockerize", "templates"))
+        # S701: we render Dockerfile / passwd / group / nsswitch.conf text, not
+        # HTML — autoescape=True would mangle the templates. There is no XSS
+        # surface; the renderer output is never served to a browser.
+        self.env: Environment = Environment(  # noqa: S701
+            loader=PackageLoader("dockerize", "templates")
+        )
+
+    def _require_targetdir(self) -> Path:
+        """Return ``self.targetdir`` as a non-None ``Path``.
+
+        Internal helper for methods that run inside :py:meth:`build` and rely
+        on the staging directory having been created. Replaces the previous
+        ``assert self.targetdir is not None`` pattern, which is silently
+        bypassed when Python is invoked with ``-O``.
+        """
+        if self.targetdir is None:
+            raise RuntimeError(
+                "Dockerize.targetdir is not initialized; "
+                "internal methods must be called from within build()"
+            )
+        return self.targetdir
 
     def add_user(self, user: str) -> None:
         """Import a user into ``/etc/passwd`` on the image.
@@ -238,17 +258,17 @@ class Dockerize:
 
     def generate_dockerfile(self) -> None:
         LOG.info("generating Dockerfile")
-        assert self.targetdir is not None
+        targetdir = self._require_targetdir()
         tmpl = self.env.get_template("Dockerfile")
-        (self.targetdir / "Dockerfile").write_text(
+        (targetdir / "Dockerfile").write_text(
             tmpl.render(controller=self, docker=self.docker, labels=self.oci_labels())
         )
 
     def populate(self) -> None:
         """Render and write ``/etc/passwd``, ``/etc/group``, ``nsswitch.conf``."""
         LOG.info("populating misc config files")
-        assert self.targetdir is not None
-        etc_dir = self.targetdir / "etc"
+        targetdir = self._require_targetdir()
+        etc_dir = targetdir / "etc"
         etc_dir.mkdir(parents=True, exist_ok=True)
         for path in ["passwd", "group", "nsswitch.conf"]:
             tmpl = self.env.get_template(path)
@@ -279,8 +299,8 @@ class Dockerize:
             symlinks = self.symlinks
 
         LOG.info("copying %s to %s", src_path, dst)
-        assert self.targetdir is not None
-        target = self.targetdir / dst.lstrip("/")
+        targetdir = self._require_targetdir()
+        target = targetdir / dst.lstrip("/")
         target.parent.mkdir(parents=True, exist_ok=True)
 
         follow = symlinks in (SymlinkOptions.COPY_ALL, SymlinkOptions.COPY_UNSAFE)
@@ -345,9 +365,9 @@ class Dockerize:
     def resolve_deps(self) -> None:
         """Walk the image tree and pull in shared-library dependencies."""
         deps = DepSolver()
-        assert self.targetdir is not None
+        targetdir = self._require_targetdir()
 
-        for root, _, files in os.walk(self.targetdir):
+        for root, _, files in os.walk(targetdir):
             for name in files:
                 path = Path(root) / name
                 deps.add(path)
@@ -379,28 +399,31 @@ class Dockerize:
         """Apply UPX compression to compressible binaries under ``targetdir``."""
         if self.compress_level is None:
             return []
-        assert self.targetdir is not None
+        targetdir = self._require_targetdir()
         return compress_tree(
-            self.targetdir,
+            targetdir,
             level=self.compress_level,
             include_libs=self.compress_libs,
         )
 
     def generate_sbom(self) -> Path:
         """Run ``syft`` against the build context and write an SBOM."""
-        assert self.targetdir is not None
-        assert self.sbom_path is not None
-        return generate_sbom(self.targetdir, self.sbom_path, sbom_format=self.sbom_format)
+        targetdir = self._require_targetdir()
+        if self.sbom_path is None:
+            raise RuntimeError(
+                "generate_sbom() requires sbom_path to be set; call build() with --sbom"
+            )
+        return generate_sbom(targetdir, self.sbom_path, sbom_format=self.sbom_format)
 
     def build_image(self) -> None:
         import subprocess
 
-        assert self.targetdir is not None
+        targetdir = self._require_targetdir()
 
         # --output-oci mode: emit an OCI archive without a docker daemon socket.
         if self.output_oci is not None:
             build_oci_archive(
-                self.targetdir,
+                targetdir,
                 self.output_oci,
                 tag=self.docker.get("tag"),
                 runtime=self.docker["runtime"],
@@ -418,7 +441,7 @@ class Dockerize:
         cmd: list[str] = [runtime_path, self.docker["buildcmd"]]
         if "tag" in self.docker:
             cmd += ["-t", self.docker["tag"]]
-        cmd += [str(self.targetdir)]
+        cmd += [str(targetdir)]
 
         LOG.info('building Docker image using "%s"', " ".join(cmd))
         subprocess.check_call(cmd)
