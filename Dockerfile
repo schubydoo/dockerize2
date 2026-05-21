@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: build the wheel.
 # -----------------------------------------------------------------------------
-FROM python:3.14-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -27,7 +27,7 @@ RUN uv build --wheel
 # Running on $BUILDPLATFORM (amd64 on GH runners) skips QEMU emulation —
 # Go's native cross-compile produces every target arch in seconds.
 # -----------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS syft-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm@sha256:386d475a660466863d9f8c766fec64d7fdad3edac2c6a05020c09534d71edb4b AS syft-builder
 ARG SYFT_VERSION=v1.44.0
 ARG TARGETOS
 ARG TARGETARCH
@@ -52,7 +52,7 @@ RUN set -eux; \
 #   - syft          : --sbom (cross-compiled from source in the syft-builder
 #                     stage above; anchore doesn't ship linux/armv7 binaries)
 # -----------------------------------------------------------------------------
-FROM python:3.14-slim-bookworm
+FROM python:3.14-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
