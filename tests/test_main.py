@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dockerize.dockerize import SymlinkOptions
+from dockerize.compress import CompressionLevel
+from dockerize.dockerize import DEFAULT_NSS_MODULES, SymlinkOptions
 from dockerize.main import FILETOOLS, CliArgs, main, parse_args
 
 
@@ -146,3 +147,86 @@ def test_main_add_file_pair_forwarded() -> None:
     with patch("dockerize.main.Dockerize", return_value=fake_app):
         main(["-a", "/host/foo", "/img/foo", "/bin/x"])
     fake_app.add_file.assert_any_call("/host/foo", "/img/foo")
+
+
+# -------- --label parsing -------------------------------------------------
+
+
+def test_label_single_parsed() -> None:
+    args = parse_args(["--label", "maintainer=schuby", "/bin/x"])
+    assert args.extra_labels == {"maintainer": "schuby"}
+
+
+def test_label_repeated_accumulates() -> None:
+    args = parse_args(
+        ["--label", "a=1", "--label", "b=2", "/bin/x"],
+    )
+    assert args.extra_labels == {"a": "1", "b": "2"}
+
+
+def test_label_value_may_contain_equals() -> None:
+    # Only the first '=' splits key from value.
+    args = parse_args(["--label", "url=https://x/y?a=b", "/bin/x"])
+    assert args.extra_labels == {"url": "https://x/y?a=b"}
+
+
+def test_label_key_whitespace_stripped() -> None:
+    args = parse_args(["--label", "  org.title  =hello", "/bin/x"])
+    assert args.extra_labels == {"org.title": "hello"}
+
+
+def test_label_missing_equals_exits() -> None:
+    with pytest.raises(SystemExit):
+        parse_args(["--label", "noequalshere", "/bin/x"])
+
+
+# -------- --nss-modules parsing -------------------------------------------
+
+
+def test_nss_modules_default() -> None:
+    args = parse_args(["/bin/x"])
+    assert args.nss_modules == DEFAULT_NSS_MODULES
+
+
+def test_nss_modules_custom() -> None:
+    args = parse_args(["--nss-modules", "files,dns,myhostname", "/bin/x"])
+    assert args.nss_modules == ("files", "dns", "myhostname")
+
+
+def test_nss_modules_strips_whitespace_and_drops_empties() -> None:
+    args = parse_args(["--nss-modules", " files , dns ,,", "/bin/x"])
+    assert args.nss_modules == ("files", "dns")
+
+
+# -------- --compress / --compress-level -----------------------------------
+
+
+def test_compress_defaults_to_best_level() -> None:
+    args = parse_args(["--compress", "/bin/x"])
+    assert args.compress_level is CompressionLevel.BEST
+
+
+def test_compress_level_explicit() -> None:
+    args = parse_args(["--compress", "--compress-level", "ultra", "/bin/x"])
+    assert args.compress_level is CompressionLevel.ULTRA
+
+
+def test_compress_level_ignored_without_compress() -> None:
+    # --compress-level without --compress leaves compression disabled.
+    args = parse_args(["--compress-level", "ultra", "/bin/x"])
+    assert args.compress_level is None
+
+
+def test_compress_level_invalid_exits() -> None:
+    with pytest.raises(SystemExit):
+        parse_args(["--compress", "--compress-level", "bogus", "/bin/x"])
+
+
+def test_compress_libs_flag() -> None:
+    args = parse_args(["--compress", "--compress-libs", "/bin/x"])
+    assert args.compress_libs is True
+
+
+def test_compress_libs_default_false() -> None:
+    args = parse_args(["/bin/x"])
+    assert args.compress_libs is False
