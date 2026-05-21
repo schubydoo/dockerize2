@@ -312,3 +312,146 @@ def test_build_with_temp_targetdir_cleans_up(tmp_path: Path) -> None:
     # targetdir is reassigned to the tempdir; after build() it's been removed.
     assert app.targetdir is not None
     assert not Path(app.targetdir).exists()
+
+
+# -------- compress / sbom / output-oci wiring -----------------------------
+#
+# These tests pin the wiring between `Dockerize.build()` and the three
+# feature modules so a future refactor can't silently disconnect a flag
+# from its effect.
+
+
+def test_compress_noop_when_level_unset(tmp_path: Path) -> None:
+    """compress() returns [] without invoking compress_tree when no level."""
+    from dockerize import dockerize as dockerize_mod
+
+    app = Dockerize(targetdir=str(tmp_path), compress_level=None)
+    with patch.object(dockerize_mod, "compress_tree") as compress_tree:
+        result = app.compress()
+    assert result == []
+    compress_tree.assert_not_called()
+
+
+def test_compress_invokes_compress_tree_with_level(tmp_path: Path) -> None:
+    """compress() forwards level and include_libs to compress_tree."""
+    from dockerize import dockerize as dockerize_mod
+    from dockerize.compress import CompressionLevel
+
+    app = Dockerize(
+        targetdir=str(tmp_path),
+        compress_level=CompressionLevel.ULTRA,
+        compress_libs=True,
+    )
+    with patch.object(dockerize_mod, "compress_tree", return_value=[]) as compress_tree:
+        app.compress()
+    compress_tree.assert_called_once_with(
+        Path(str(tmp_path)),
+        level=CompressionLevel.ULTRA,
+        include_libs=True,
+    )
+
+
+def test_generate_sbom_delegates_to_sbom_module(tmp_path: Path) -> None:
+    """generate_sbom() forwards targetdir, sbom_path, and format to sbom.generate_sbom."""
+    from dockerize import dockerize as dockerize_mod
+    from dockerize.sbom import SBOMFormat
+
+    sbom_path = tmp_path / "out.cdx.json"
+    app = Dockerize(
+        targetdir=str(tmp_path),
+        sbom_path=sbom_path,
+        sbom_format=SBOMFormat.CYCLONEDX_JSON,
+    )
+    with patch.object(dockerize_mod, "generate_sbom", return_value=sbom_path) as gen:
+        app.generate_sbom()
+    gen.assert_called_once_with(
+        Path(str(tmp_path)),
+        sbom_path,
+        sbom_format=SBOMFormat.CYCLONEDX_JSON,
+    )
+
+
+def test_build_image_routes_to_oci_when_output_oci_set(tmp_path: Path) -> None:
+    """build_image() short-circuits to build_oci_archive when output_oci is set."""
+    from dockerize import dockerize as dockerize_mod
+
+    oci_path = tmp_path / "img.oci.tar"
+    app = Dockerize(
+        targetdir=str(tmp_path),
+        tag="img:1",
+        output_oci=oci_path,
+        runtime="podman",
+    )
+    with (
+        patch.object(dockerize_mod, "build_oci_archive") as build_oci,
+        patch("subprocess.check_call") as run,
+    ):
+        app.build_image()
+    build_oci.assert_called_once_with(
+        Path(str(tmp_path)),
+        oci_path,
+        tag="img:1",
+        runtime="podman",
+    )
+    run.assert_not_called()
+
+
+def test_build_image_takes_classic_path_when_oci_unset(tmp_path: Path) -> None:
+    """Default build_image() still invokes the runtime CLI, not OCI export."""
+    from dockerize import dockerize as dockerize_mod
+
+    app = Dockerize(targetdir=str(tmp_path), tag="img:1", output_oci=None)
+    with (
+        patch.object(dockerize_mod, "build_oci_archive") as build_oci,
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("subprocess.check_call") as run,
+    ):
+        app.build_image()
+    build_oci.assert_not_called()
+    run.assert_called_once()
+
+
+def test_full_build_with_sbom_calls_generate_sbom(tmp_path: Path) -> None:
+    """build() runs generate_sbom() after Dockerfile rendering when sbom_path is set."""
+    from dockerize import dockerize as dockerize_mod
+    from dockerize.depsolver import DepSolver
+
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"\x7fELF" + b"\x00" * 100)
+    target = tmp_path / "image"
+    sbom_path = tmp_path / "sbom.spdx.json"
+
+    app = Dockerize(targetdir=str(target), sbom_path=sbom_path, build=False)
+    app.add_file(str(src), "/bin/src.bin")
+
+    with (
+        patch.object(DepSolver, "add"),
+        patch.object(dockerize_mod, "generate_sbom", return_value=sbom_path) as gen,
+    ):
+        app.build()
+    gen.assert_called_once()
+
+
+def test_full_build_with_compress_calls_compress_tree(tmp_path: Path) -> None:
+    """build() runs compress() which invokes compress_tree when level is set."""
+    from dockerize import dockerize as dockerize_mod
+    from dockerize.compress import CompressionLevel
+    from dockerize.depsolver import DepSolver
+
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"\x7fELF" + b"\x00" * 100)
+    target = tmp_path / "image"
+
+    app = Dockerize(
+        targetdir=str(target),
+        compress_level=CompressionLevel.BEST,
+        build=False,
+    )
+    app.add_file(str(src), "/bin/src.bin")
+
+    with (
+        patch.object(DepSolver, "add"),
+        patch.object(dockerize_mod, "compress_tree", return_value=[]) as compress_tree,
+    ):
+        app.build()
+    compress_tree.assert_called_once()
