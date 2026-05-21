@@ -37,7 +37,7 @@ RUN set -eux; \
       arm) export GOARM="${TARGETVARIANT#v}" ;; \
     esac; \
     GOOS="$TARGETOS" GOARCH="$TARGETARCH" CGO_ENABLED=0 \
-      go install -trimpath -ldflags="-s -w" \
+      go install -trimpath -ldflags="-s -w -X main.version=${SYFT_VERSION}" \
         "github.com/anchore/syft/cmd/syft@${SYFT_VERSION}"; \
     mkdir -p /out; \
     find /go/bin -type f -name syft -exec install -m 0755 {} /out/syft \;
