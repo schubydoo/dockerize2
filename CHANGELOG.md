@@ -5,6 +5,29 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3](https://github.com/schubydoo/dockerize2/compare/v0.3.2...v0.3.3) (2026-05-21)
+
+
+### Documentation
+
+* **attribution:** disclose AI development assistance ([#50](https://github.com/schubydoo/dockerize2/issues/50)) ([04456c5](https://github.com/schubydoo/dockerize2/commit/04456c588e5383eb52332d906a7ec27fe4e90b1d))
+* **dockerfile:** annotate why root is required in the runtime stage ([#53](https://github.com/schubydoo/dockerize2/issues/53)) ([9c16f23](https://github.com/schubydoo/dockerize2/commit/9c16f23d0a75e9f1aed88f87482dfff26406eaa9))
+
+
+### Miscellaneous
+
+* **community:** add PR + issue templates and CoC stub ([#52](https://github.com/schubydoo/dockerize2/issues/52)) ([897a7d8](https://github.com/schubydoo/dockerize2/commit/897a7d8924c58c1f525a0738384ceb57c5334698))
+* **pyproject:** add GPLv3+ and CPython classifiers ([#51](https://github.com/schubydoo/dockerize2/issues/51)) ([30cff3d](https://github.com/schubydoo/dockerize2/commit/30cff3de5099bf3425fc69beaf7c8271cf03a8dd))
+* **ruff:** enable bandit (S) rules; harden runtime guards ([#48](https://github.com/schubydoo/dockerize2/issues/48)) ([1335dff](https://github.com/schubydoo/dockerize2/commit/1335dff27dd73595ffdd67c54f8cca1d70e71cf4))
+
+
+### Continuous Integration
+
+* **branch-protection:** require Zizmor workflow audit on PRs ([#49](https://github.com/schubydoo/dockerize2/issues/49)) ([bedd97e](https://github.com/schubydoo/dockerize2/commit/bedd97e8346c608ed4ffc6fe5aaee65782303c20))
+* **release-please:** automate version + CHANGELOG management ([#54](https://github.com/schubydoo/dockerize2/issues/54)) ([fbabfaf](https://github.com/schubydoo/dockerize2/commit/fbabfaf03383e43c141fbad6ffd3c7c8f159c6ae))
+* **release-please:** fix extra-file updater for __init__.py ([#55](https://github.com/schubydoo/dockerize2/issues/55)) ([e750ef8](https://github.com/schubydoo/dockerize2/commit/e750ef8c3182540ad72cf1bc62cf9816d3972516))
+* **trivy:** fail on findings; align image severity to fs ([#47](https://github.com/schubydoo/dockerize2/issues/47)) ([3cd1804](https://github.com/schubydoo/dockerize2/commit/3cd1804be08e9c2db3152b7074ac2de3d6caa56b))
+
 ## [Unreleased]
 
 ### Added
