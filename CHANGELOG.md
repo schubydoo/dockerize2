@@ -268,7 +268,9 @@ Not committed to a release yet; tracked for future consideration.
   `.interp` resolution.
 - `--squash` post-process / `SOURCE_DATE_EPOCH` reproducible builds.
 - Plugin hook system for new file-classifier types.
-- `release-please` for auto-generated release notes.
+- `--env KEY=VALUE` to bake environment variables into the produced
+  image (rendered into the Dockerfile `ENV` block / OCI image config),
+  repeatable like `--label`.
 
 ## Pre-fork history
 
