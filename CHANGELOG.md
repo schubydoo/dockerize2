@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Two PyPI Trove classifiers added to `pyproject.toml`: the explicit
+  GPLv3+ license (`License :: OSI Approved :: GNU General Public
+  License v3 or later (GPLv3+)`) and the CPython implementation
+  (`Programming Language :: Python :: Implementation :: CPython`).
+  Improves PyPI discoverability and the package's metadata accuracy.
 - New "Acknowledgements" section in `README.md` and a "Development
   assistance" paragraph in `NOTICE` disclose that this fork is
   developed with assistance from Claude (Anthropic) as a
