@@ -45,6 +45,11 @@ jobs:
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
           repository-url: https://test.pypi.org/legacy/
+          # Tolerate the case where this same version was already uploaded
+          # by an earlier (possibly partial-failure) workflow run, so we can
+          # re-trigger the release after fixing a downstream job without
+          # the publish step refusing the duplicate.
+          skip-existing: true
 
   image:
     name: GHCR image (multi-arch + cosign + SBOM)
