@@ -17,6 +17,36 @@
     "enabled": true,
     "schedule": ["before 7am on monday"]
   },
+  "pre-commit": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "UPX version (github-releases).",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": ["ARG UPX_VERSION=(?<currentValue>\\S+)"],
+      "depNameTemplate": "upx/upx",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v?(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "docker/buildx version (github-releases).",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": ["ARG BUILDX_VERSION=(?<currentValue>\\S+)"],
+      "depNameTemplate": "docker/buildx",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "anchore/syft version (github-releases).",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": ["ARG SYFT_VERSION=(?<currentValue>\\S+)"],
+      "depNameTemplate": "anchore/syft",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
   "packageRules": [
     {
       "description": "Auto-merge patch updates of dev tooling.",
