@@ -131,15 +131,31 @@ def test_main_wires_args_into_dockerize() -> None:
     fake_app.build.assert_called_once_with()
 
 
-def test_main_filetools_adds_all_paths() -> None:
+def test_main_filetools_resolves_via_which(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Resolve every tool name to a deterministic absolute path so the test is
+    # platform-independent (real `which("ls")` is None on Windows).
+    monkeypatch.setattr("dockerize.main.shutil.which", lambda name: f"/resolved/{name}")
     fake_app = MagicMock()
     with patch("dockerize.main.Dockerize", return_value=fake_app):
         main(["--filetools", "/bin/x"])
 
     added = {call.args[0] for call in fake_app.add_file.call_args_list}
     assert "/bin/x" in added
-    for path in FILETOOLS:
-        assert path in added
+    for name in FILETOOLS:
+        assert f"/resolved/{name}" in added
+
+
+def test_main_filetools_skips_tools_not_on_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # When a tool can't be resolved, it's skipped (with a warning), not added.
+    monkeypatch.setattr("dockerize.main.shutil.which", lambda name: None)
+    fake_app = MagicMock()
+    with patch("dockerize.main.Dockerize", return_value=fake_app):
+        main(["--filetools", "/bin/x"])
+
+    added = {call.args[0] for call in fake_app.add_file.call_args_list}
+    assert added == {"/bin/x"}
 
 
 def test_main_add_file_pair_forwarded() -> None:
