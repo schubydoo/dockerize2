@@ -13,9 +13,12 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  pypi:
-    name: PyPI publish
+  testpypi:
+    name: TestPyPI publish
     runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/dockerize2
     permissions:
       contents: read
       id-token: write
@@ -31,8 +34,10 @@ jobs:
           enable-cache: false
       - name: Build
         run: uv build
-      - name: Publish to PyPI (Trusted Publishing)
+      - name: Publish to TestPyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          repository-url: https://test.pypi.org/legacy/
 
   image:
     name: GHCR image (multi-arch + cosign + SBOM)
