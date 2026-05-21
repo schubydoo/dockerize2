@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- New "Acknowledgements" section in `README.md` and a "Development
+  assistance" paragraph in `NOTICE` disclose that this fork is
+  developed with assistance from Claude (Anthropic) as a
+  pair-programming and code-review tool, while the maintainer directs
+  all work and retains editorial control over merges. Original-project
+  credit to `dockerize` and Lars Kellogg-Stedman is unchanged in
+  `NOTICE` and the README fork-context callout.
+
 ### Changed
 - Branch protection now requires the Zizmor (`workflow audit`) check
   to pass before a PR can merge. Previously Zizmor ran on every PR

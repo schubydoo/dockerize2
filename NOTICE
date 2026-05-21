@@ -9,3 +9,11 @@ This product is a fork and successor of:
 
 Both the original work and this fork are licensed under the GNU General
 Public License, Version 3 — see the LICENSE.txt file.
+
+Development assistance
+----------------------
+
+`dockerize2` is developed with assistance from Claude (Anthropic), used
+as a pair-programming and code-review tool. The project maintainer
+directs all work, reviews each pull request, and retains editorial
+control over what is merged.

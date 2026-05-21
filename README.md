@@ -179,3 +179,14 @@ Serve your own content:
 
     docker run -v /my/content:/var/www thttpd
 
+## Acknowledgements
+
+See [`NOTICE`](NOTICE) for credit to the original
+[`dockerize`](https://github.com/larsks/dockerize) project and Lars
+Kellogg-Stedman, on whose work this fork builds.
+
+Development of `dockerize2` is assisted by Claude (Anthropic), used as a
+pair-programming and code-review tool. The maintainer directs all work,
+reviews each pull request, and retains editorial control over what is
+merged.
+
