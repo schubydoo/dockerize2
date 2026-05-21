@@ -36,7 +36,9 @@ jobs:
       - name: Run tests
         # --cov-fail-under is set conservatively to catch regressions, not to
         # encode the current ceiling. Raise it as coverage improves.
-        run: uv run --python ${{ matrix.python-version }} pytest -q --cov=dockerize --cov-report=term-missing --cov-fail-under=75
+        # Actual on the lowest-coverage platform (Windows, which skips the
+        # symlink + integration tests) is ~83%; floor sits a few points below.
+        run: uv run --python ${{ matrix.python-version }} pytest -q --cov=dockerize --cov-report=term-missing --cov-fail-under=80
 
   integration:
     name: integration (ubuntu)
