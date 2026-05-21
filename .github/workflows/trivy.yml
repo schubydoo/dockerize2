@@ -29,10 +29,8 @@ jobs:
           output: trivy-fs.sarif
           severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
-          trivyignores: .trivyignore
-          # Fail the job on fixable findings. ignore-unfixed:true means only
-          # CVEs with an available fix gate; .trivyignore carries explicit,
-          # documented exceptions.
+          # Gate on fixable findings in our own dependencies. ignore-unfixed
+          # means only CVEs with an available fix fail the job.
           exit-code: "1"
       - name: Upload SARIF
         if: always()
@@ -50,10 +48,12 @@ jobs:
       contents: read
       packages: read
     steps:
-      # Checkout so the Trivy step can read .trivyignore from the workspace.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
+      # Report-only: the runtime image bundles third-party binaries (docker
+      # CLI, buildx, syft) whose CVEs we usually can't action directly, and
+      # trivy's secret scanner is prone to false positives on packed binaries.
+      # Hard-gating here blocks master on findings we can't fix, so the image
+      # scan uploads to the Security tab for triage instead of failing CI.
+      # (The filesystem scan, covering our own deps, IS gated — see above.)
       - name: Trivy image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -62,9 +62,6 @@ jobs:
           output: trivy-image.sarif
           severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
-          trivyignores: .trivyignore
-          # Fail the job on fixable findings not covered by .trivyignore.
-          exit-code: "1"
       - name: Upload SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
