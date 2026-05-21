@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: build the wheel.
 # -----------------------------------------------------------------------------
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -52,7 +52,7 @@ RUN set -eux; \
 #   - syft          : --sbom (cross-compiled from source in the syft-builder
 #                     stage above; anchore doesn't ship linux/armv7 binaries)
 # -----------------------------------------------------------------------------
-FROM python:3.13-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
