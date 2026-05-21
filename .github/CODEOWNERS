@@ -1,0 +1,4 @@
+# Informational ownership. Auto-suggests @schubydoo as a reviewer when
+# a PR is opened. Not a merge gate — branch protection's
+# `require_code_owner_reviews` is intentionally off (see settings.yml).
+* @schubydoo
