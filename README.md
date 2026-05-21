@@ -1,13 +1,18 @@
 # dockerize2
 
-> **Fork notice.** `dockerize2` is the successor to
-> [larsks/dockerize](https://github.com/larsks/dockerize), which has been
-> dormant since 2020. This repository is where active development now
-> happens. Original copyright is preserved (see [NOTICE](NOTICE) and
-> [LICENSE.txt](LICENSE.txt)); the project remains GPL-3.0-licensed.
+> **About this fork.** `dockerize2` continues
+> [larsks/dockerize](https://github.com/larsks/dockerize) — picking up
+> where upstream paused in 2020 to refresh the toolchain (PEP 621
+> packaging, type hints, uv, Python 3.11+) and add new capabilities:
+> UPX compression, OCI-archive output, SBOM generation, a `doctor`
+> health check, and a multi-arch container image. Original copyright
+> is preserved (see [NOTICE](NOTICE) and [LICENSE.txt](LICENSE.txt));
+> the project remains GPL-3.0-licensed.
 
 `dockerize2` packs up your dynamically linked ELF binaries and all their
-dependencies and turns them into a minimal `FROM scratch` Docker image.
+dependencies and turns them into a minimal `FROM scratch` Docker image —
+optionally UPX-compressed, with a generated SBOM, emitted as either a
+daemon push or an OCI archive.
 
 Some example images built with the original tool are available from:
 
@@ -75,32 +80,71 @@ docker run --rm ghcr.io/schubydoo/dockerize2:latest doctor
     usage: dockerize [-h] [--tag TAG] [--cmd CMD] [--entrypoint ENTRYPOINT]
                      [--no-build] [--output-dir OUTPUT_DIR] [--add-file SRC DST]
                      [--symlinks SYMLINKS] [--user USER] [--group GROUP]
-                     [--filetools] [--verbose] [--debug] [--version]
+                     [--filetools] [--no-host-lookup] [--allow-sensitive]
+                     [--nss-modules NSS_MODULES] [--label KEY=VALUE] [--compress]
+                     [--compress-level {normal,best,ultra}] [--compress-libs]
+                     [--sbom PATH]
+                     [--sbom-format {spdx-json,cyclonedx-json,syft-json}]
+                     [--output-oci PATH] [--runtime RUNTIME] [--buildcmd BUILDCMD]
+                     [--verbose] [--debug] [--version]
                      ...
 
     positional arguments:
       paths
 
-    optional arguments:
+    options:
       -h, --help            show this help message and exit
-      --add-file SRC DST, -a SRC DST
+      --add-file, -a SRC DST
                             Add file <src> to image at <dst>
-      --symlinks SYMLINKS, -L SYMLINKS
+      --symlinks, -L SYMLINKS
                             One of preserve, copy-unsafe, skip-unsafe, copy-all
-      --user USER, -u USER  Add user to /etc/passwd in image
-      --group GROUP, -g GROUP
-                            Add group to /etc/group in image
+      --user, -u USER       Add user to /etc/passwd in image
+      --group, -g GROUP     Add group to /etc/group in image
       --filetools           Add common file manipulation tools
+      --runtime, -R RUNTIME
+                            Set container engine for building
+      --buildcmd, -B BUILDCMD
+                            Set command for building
       --version             show program's version number and exit
 
     Docker options:
-      --tag TAG, -t TAG     Tag to apply to Docker image
-      --cmd CMD, -c CMD
-      --entrypoint ENTRYPOINT, -e ENTRYPOINT
+      --tag, -t TAG         Tag to apply to Docker image
+      --cmd, -c CMD
+      --entrypoint, -e ENTRYPOINT
 
     Output options:
       --no-build, -n        Do not build Docker image
-      --output-dir OUTPUT_DIR, -o OUTPUT_DIR
+      --output-dir, -o OUTPUT_DIR
+
+    Security options:
+      --no-host-lookup      Reject bare user/group names; require colon-delimited
+                            entries.
+      --allow-sensitive     Allow copying known-sensitive host paths (/etc/shadow,
+                            ~/.ssh/*, etc.).
+      --nss-modules NSS_MODULES
+                            Comma-separated list of nss modules to copy into the
+                            image (default: files,dns). Limits CVE surface vs.
+                            copying every libnss*.
+      --label KEY=VALUE     Add an OCI image label. Repeatable.
+
+    Compression options:
+      --compress            Apply UPX compression to ELF executables in the image.
+      --compress-level {normal,best,ultra}
+                            UPX level when --compress is set (default: best).
+      --compress-libs       Also compress shared libraries (deprecated UPX
+                            feature; increases incompatibility risk — use at your
+                            own risk).
+
+    Output options (advanced):
+      --sbom PATH           Write an SBOM of the build context to PATH (requires
+                            syft).
+      --sbom-format {spdx-json,cyclonedx-json,syft-json}
+                            SBOM format (default: spdx-json).
+      --output-oci PATH     Emit an OCI image archive to PATH instead of pushing
+                            into a daemon. Uses `docker buildx` if available;
+                            falls back to `podman save --format oci-archive`.
+                            Removes the need for /var/run/docker.sock when running
+                            dockerize from a container.
 
     Logging options:
       --verbose
