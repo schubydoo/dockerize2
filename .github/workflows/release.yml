@@ -151,9 +151,20 @@ jobs:
             exit 1
           fi
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@aec2ec56f94eb8180ceec724245f64ef008b89f5 # v2.4.0
-        with:
-          body_path: release-notes.md
-          files: dist/*
-          fail_on_unmatched_files: true
-          generate_release_notes: false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no dist artefacts to attach to the release"
+            exit 1
+          fi
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --title "$TAG" \
+            --notes-file release-notes.md \
+            "${files[@]}"
