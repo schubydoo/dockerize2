@@ -33,14 +33,19 @@ branches:
         # Context names must match the check-run names GitHub records
         # exactly — that's the job's `name:` field, not "workflow / job".
         # The check must also have run on the repo at least once before
-        # it can be marked required. These four have, per
+        # it can be marked required. All five have, per
         # `gh api repos/.../commits/master/check-runs`.
+        #
+        # `OSSF Scorecard` is intentionally NOT required: scorecard.yml
+        # only triggers on push + schedule + branch_protection_rule, so
+        # requiring it would leave every PR perpetually pending.
         strict: true
         contexts:
           - "ruff + mypy"
           - "analyze (python)"
           - "secret scan"
           - "filesystem scan"
+          - "workflow audit"
       # `null` (not `false`) — the Probot Settings App rejects `false` here
       # silently. See repository-settings/app#923 (comment 2200600178).
       enforce_admins: null

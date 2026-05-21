@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Branch protection now requires the Zizmor (`workflow audit`) check
+  to pass before a PR can merge. Previously Zizmor ran on every PR
+  but its result didn't gate merges. `OSSF Scorecard` is intentionally
+  not gated — its workflow has no `pull_request:` trigger, so making
+  it required would leave every PR perpetually pending.
+
 ### Security
 - Trivy image scan now fails the workflow on findings (the scan and
   SARIF-upload steps no longer carry `continue-on-error: true`), so a
