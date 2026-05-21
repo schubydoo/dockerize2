@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-20
+
 ### Added
 - Fork groundwork: `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`,
   `NOTICE`, comprehensive `.gitignore`, fork-status notice in `README.md`.
@@ -63,9 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a usable build environment is detected, 1 otherwise. Cuts support
   load: a single command tells you what's missing.
 - **Multi-arch container image** at `ghcr.io/schubydoo/dockerize2`
-  (`linux/amd64`, `linux/arm64`, `linux/arm/v7`). Two-stage build on
-  `python:3.13-slim-bookworm`. Ships `upx 5.x`, `docker buildx`, `syft`,
-  and the Docker CLI; ENTRYPOINT is `dockerize`. README documents the
+  (`linux/amd64`, `linux/arm64`, `linux/arm/v7`). Three-stage build on
+  `python:3.14-slim-bookworm`; `syft` cross-compiled from source via a
+  `golang:1.26-bookworm` builder stage (anchore doesn't publish armv7
+  binaries upstream). Ships `upx 5.x`, `docker buildx`, `syft`, and the
+  Docker CLI; ENTRYPOINT is `dockerize`. README documents the
   recommended socket-free `--output-oci` invocation alongside the
   classic socket-mount form.
 - **CI / supply-chain workflows** (all in `.github/workflows/`):
