@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Community health files: a placeholder `CODE_OF_CONDUCT.md` (to be
+  replaced with a substantive policy in a follow-up), a
+  `.github/PULL_REQUEST_TEMPLATE.md` reminding contributors of the
+  conventions (Conventional Commits, signed commits, CHANGELOG
+  entries), and `.github/ISSUE_TEMPLATE/` with `bug_report.md`,
+  `feature_request.md`, and a `config.yml` that routes security
+  reports to the private-advisory flow.
 - Two PyPI Trove classifiers added to `pyproject.toml`: the explicit
   GPLv3+ license (`License :: OSI Approved :: GNU General Public
   License v3 or later (GPLv3+)`) and the CPython implementation
