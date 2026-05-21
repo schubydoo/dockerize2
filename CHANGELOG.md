@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Inline comment in the `Dockerfile` runtime stage documenting why no
+  `USER` directive is set: the default `--runtime docker` path needs
+  the host's root-owned Docker socket, and the buildx CLI plugin lives
+  under `/root/.docker/cli-plugins`. The comment also points users who
+  don't need the daemon path to `--output-oci PATH`, which works
+  without the socket and can be combined with `docker run --user` to
+  drop privileges at invocation time.
 - Community health files: a placeholder `CODE_OF_CONDUCT.md` (to be
   replaced with a substantive policy in a follow-up), a
   `.github/PULL_REQUEST_TEMPLATE.md` reminding contributors of the

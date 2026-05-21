@@ -127,5 +127,13 @@ LABEL org.opencontainers.image.source="https://github.com/schubydoo/dockerize2" 
       org.opencontainers.image.documentation="https://github.com/schubydoo/dockerize2#readme"
 
 WORKDIR /work
+
+# No USER directive: the container runs as root by design.
+#   - `--runtime docker` (default) needs the host's Docker socket mounted at
+#     /var/run/docker.sock, which is typically root-owned on the host.
+#   - The Docker CLI's buildx plugin is installed under /root/.docker/cli-plugins.
+# Users who don't need the daemon path should prefer `--output-oci PATH`, which
+# emits an OCI archive without touching the socket and can be combined with
+# `docker run --user $(id -u):$(id -g)` to drop privileges.
 ENTRYPOINT ["dockerize"]
 CMD ["--help"]
