@@ -163,3 +163,6 @@ secrets.yaml
 sbom*.json
 sbom*.spdx.json
 *.oci.tar
+
+# ---- Local operator scripts (not part of the published repo) ----
+/scripts/
