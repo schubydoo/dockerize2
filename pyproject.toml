@@ -87,13 +87,23 @@ select = [
     "PTH",  # flake8-use-pathlib
     "TID",  # flake8-tidy-imports
     "C4",   # flake8-comprehensions
+    "S",    # flake8-bandit (security)
 ]
 ignore = [
     "E501",  # line length handled by formatter
+    # S603 fires on every subprocess.run/check_call/check_output regardless of
+    # safety. The codebase consistently uses list-form argv and never sets
+    # shell=True, so the actual risk this flags (shell injection) is already
+    # ruled out. S602 still catches any future shell=True usage.
+    "S603",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["B011"]
+"tests/*" = [
+    "B011",
+    "S101",  # pytest uses bare `assert` as its primary assertion mechanism
+    "S108",  # tests pass /tmp paths as fixture strings, not real temp files
+]
 
 [tool.mypy]
 python_version = "3.11"
