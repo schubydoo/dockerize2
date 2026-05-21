@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Bumped `docker/buildx` from v0.21.2 to v0.34.1 in the runtime image,
+  clearing ~65 known-fixed CVEs across the Go stdlib (1.23.6 → 1.26.x),
+  `buildkit`, `containerd`, `grpc`, and `otel` transitive deps that were
+  bundled in the v0.3.0 image.
+- Bumped `upx` from 5.0.2 to 5.1.1.
+- Pinned all Dockerfile base images by manifest-list digest
+  (`python:3.14-slim-bookworm`, `golang:1.26-bookworm`,
+  `ghcr.io/astral-sh/uv:0.11.15`). Renovate's `docker` manager keeps the
+  digests current.
+
+### Changed
+- Builder stage now runs on `--platform=$BUILDPLATFORM`. The dockerize
+  wheel is `py3-none-any`, so building it three times under QEMU was
+  wasted work; the same artefact now ships into every per-arch runtime
+  stage. Materially faster multi-arch release builds.
+- `uv` for the builder stage now comes from
+  `ghcr.io/astral-sh/uv:0.11.15` (digest-pinned) instead of a
+  `pip install` line. Satisfies Scorecard's pin-by-hash check and
+  removes a network call from each builder run.
+- Release workflow now creates a GitHub Release on every `v*` tag with
+  the matching `CHANGELOG.md` section as the body and the wheel + sdist
+  attached. Uses the preinstalled `gh` CLI (no extra third-party Action
+  dependency).
+- Renovate now tracks `.pre-commit-config.yaml` hooks and the
+  `UPX_VERSION` / `BUILDX_VERSION` / `SYFT_VERSION` `ARG`s in the
+  Dockerfile via `customManagers`. `.github/dependabot.yml` removed —
+  Renovate is the single dependency manager.
+- Branch protection: required PR reviews removed. The fork-PR
+  workflow-approval gate already blocks untrusted CI runs, so the
+  review requirement was double-locking and slowing maintainer merges
+  without adding security.
+
+### Fixed
+- GHCR multi-arch image manifest list now carries the
+  `org.opencontainers.image.description` annotation
+  (`DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index`), so the
+  GitHub Packages page shows the project description instead of
+  "No description provided".
+- README: refreshed the fork notice (continuation framing, not "active
+  development now happens here") and brought the Synopsis block up to
+  date with the current `dockerize --help` output (security options,
+  compression, `--sbom`, `--output-oci`, `--label`).
+
+### Internal
+- New tests covering `--compress` / `--sbom` / `--output-oci` wiring
+  in `Dockerize` (7 unit tests asserting the call paths can't silently
+  disconnect).
+- New tests for `oci_output` subprocess-failure paths (3 tests pinning
+  `buildx` / `podman build` / `podman save` error propagation and call
+  ordering).
+- New integration tests for `--compress` (UPX magic check) and
+  `--sbom` (SPDX JSON validation), Linux-only, opt-in via
+  `--run-integration`. CI integration job now installs `upx-ucl` and
+  `syft` (pinned to `SYFT_VERSION`).
+- CI matrix now enforces `--cov-fail-under=75` so coverage can't
+  silently regress.
+
 ## [0.3.0] - 2026-05-20
 
 ### Added
