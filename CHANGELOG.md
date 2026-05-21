@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Release Please** now automates version tagging and CHANGELOG
+  maintenance. Each push to `master` re-evaluates Conventional Commits
+  since the last tag; if there's a `feat:`, `fix:`, or `perf:`, an
+  auto-opened "release PR" bumps `__version__` in
+  `dockerize/__init__.py`, rewrites `CHANGELOG.md`, and updates
+  `.release-please-manifest.json`. Merging the release PR fires the
+  existing `release.yml` (PyPI + GHCR multi-arch image). Config in
+  `release-please-config.json` and `.github/workflows/release-please.yml`;
+  Conventional Commits reference added to `CONTRIBUTING.md`.
 - Inline comment in the `Dockerfile` runtime stage documenting why no
   `USER` directive is set: the default `--runtime docker` path needs
   the host's root-owned Docker socket, and the buildx CLI plugin lives
