@@ -19,16 +19,16 @@ repository:
   allow_squash_merge: true
   allow_merge_commit: false
   allow_rebase_merge: true
-  allow_auto_merge: false
+  allow_auto_merge: true
   delete_branch_on_merge: true
 
 branches:
   - name: master
     protection:
       required_pull_request_reviews:
-        required_approving_review_count: 0
+        required_approving_review_count: 1
         dismiss_stale_reviews: true
-        require_code_owner_reviews: false
+        require_code_owner_reviews: true
       required_status_checks:
         # Context names must match the check-run names GitHub records
         # exactly — that's the job's `name:` field, not "workflow / job".
