@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-20
+
 ### Security
 - Bumped `docker/buildx` from v0.21.2 to v0.34.1 in the runtime image,
   clearing ~65 known-fixed CVEs across the Go stdlib (1.23.6 → 1.26.x),
