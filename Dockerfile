@@ -27,9 +27,8 @@ RUN uv build --wheel
 # Running on $BUILDPLATFORM (amd64 on GH runners) skips QEMU emulation —
 # Go's native cross-compile produces every target arch in seconds.
 # -----------------------------------------------------------------------------
-ARG SYFT_VERSION=v1.44.0
 FROM --platform=$BUILDPLATFORM golang:1.24-bookworm AS syft-builder
-ARG SYFT_VERSION
+ARG SYFT_VERSION=v1.44.0
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
