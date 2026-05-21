@@ -1,4 +1,4 @@
-# Every file in this repo is owned by the maintainer. Combined with
-# branch protection's `require_code_owner_reviews: true`, this means every
-# PR needs Schuby's explicit approval before merge.
+# Informational ownership. Auto-suggests @schubydoo as a reviewer when
+# a PR is opened. Not a merge gate — branch protection's
+# `require_code_owner_reviews` is intentionally off (see settings.yml).
 * @schubydoo
