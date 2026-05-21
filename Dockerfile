@@ -1,7 +1,20 @@
 # syntax=docker/dockerfile:1.24
 
 # -----------------------------------------------------------------------------
-# Stage 1: build the wheel.
+# Stage 1: pull uv via a $BUILDPLATFORM-scoped alias.
+#
+# Bare `COPY --from=ghcr.io/astral-sh/uv:0.11.15@sha256:...` makes BuildKit
+# resolve the source image's manifest for *every* target platform of the
+# final build (amd64, arm64, arm/v7) — but the uv image has no arm/v7
+# manifest, so the resolve step 404s and the whole build fails. Wrapping
+# the image in a named stage explicitly pinned to $BUILDPLATFORM tells
+# BuildKit "only ever resolve this source for the build host", which it
+# does once.
+# -----------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:0.11.15@sha256:e590846f4776907b254ac0f44b5b380347af5d90d668138ca7938d1b0c2f98d3 AS uv-source
+
+# -----------------------------------------------------------------------------
+# Stage 2: build the wheel.
 #
 # Runs on $BUILDPLATFORM (always amd64 on GH runners). dockerize2 is pure
 # Python so `uv build --wheel` produces a single `py3-none-any` wheel that
@@ -14,9 +27,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# uv pulled from astral-sh's distroless image, pinned by digest. Satisfies
-# Scorecard's pin-by-hash requirement that a plain `pip install uv` cannot.
-COPY --from=ghcr.io/astral-sh/uv:0.11.15@sha256:e590846f4776907b254ac0f44b5b380347af5d90d668138ca7938d1b0c2f98d3 /uv /usr/local/bin/uv
+COPY --from=uv-source /uv /usr/local/bin/uv
 
 WORKDIR /src
 COPY pyproject.toml uv.lock README.md LICENSE.txt NOTICE CHANGELOG.md ./
@@ -24,7 +35,7 @@ COPY dockerize ./dockerize
 RUN uv build --wheel
 
 # -----------------------------------------------------------------------------
-# Stage 2: cross-compile syft from source.
+# Stage 3: cross-compile syft from source.
 #
 # Anchore publishes syft release artifacts for linux/{amd64,arm64,ppc64le,
 # riscv64,s390x} only — there is no linux/armv7 binary upstream, and the
@@ -50,7 +61,7 @@ RUN set -eux; \
     find /go/bin -type f -name syft -exec install -m 0755 {} /out/syft \;
 
 # -----------------------------------------------------------------------------
-# Stage 3: runtime.
+# Stage 4: runtime.
 #
 # Tools installed from upstream releases rather than Debian apt:
 #   - upx           : --compress (Debian's upx-ucl trails upstream + non-free

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-20
+
+### Fixed
+- Multi-arch release build fails on `linux/arm/v7` because the bare
+  `COPY --from=ghcr.io/astral-sh/uv:0.11.15@sha256:...` in the builder
+  stage makes BuildKit resolve the uv image's manifest for *every*
+  target platform — but uv has no `linux/arm/v7` manifest, so the
+  resolve step 404s and the entire build aborts. Wrap the source in a
+  `--platform=$BUILDPLATFORM`-pinned named stage (`uv-source`) so
+  BuildKit only resolves it once, for the build host. v0.3.1 was
+  tagged but did not publish a GHCR image because of this bug;
+  v0.3.2 is its drop-in replacement.
+
+### Changed
+- `release.yml` TestPyPI publish step now passes `skip-existing: true`,
+  so a retry of a partially-failed release run no longer aborts on the
+  publish step's duplicate-version check.
+
 ## [0.3.1] - 2026-05-20
 
 ### Security
