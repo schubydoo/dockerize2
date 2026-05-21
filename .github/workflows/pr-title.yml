@@ -1,0 +1,45 @@
+name: PR Title
+
+# Validate that the pull-request title follows Conventional Commits. Because
+# the repo squash-merges, the PR title becomes the squashed commit subject —
+# which is exactly what Release Please parses to decide version bumps and
+# CHANGELOG sections. Linting the title here keeps that signal clean.
+#
+# Same-repo PRs only (no fork workflow), so a plain `pull_request` trigger
+# with a read-only token is sufficient — no `pull_request_target`.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: conventional PR title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Keep in sync with release-please-config.json changelog-sections.
+          types: |
+            feat
+            fix
+            perf
+            revert
+            docs
+            chore
+            ci
+            build
+            test
+            refactor
+            style
