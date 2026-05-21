@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,15 +18,19 @@ __all__ = ["FILETOOLS", "CliArgs", "main", "parse_args"]
 
 LOG = logging.getLogger(__name__)
 
+# Common file-manipulation tools added by --filetools. Stored as bare names
+# and resolved against the host PATH with shutil.which() at runtime, so this
+# works on systems where these tools don't live under /bin (e.g. non-FHS
+# layouts like NixOS, or distros that split /bin and /usr/bin differently).
 FILETOOLS: list[str] = [
-    "/bin/ls",
-    "/bin/mkdir",
-    "/bin/chmod",
-    "/bin/chown",
-    "/bin/rm",
-    "/bin/cat",
-    "/bin/grep",
-    "/bin/sed",
+    "ls",
+    "mkdir",
+    "chmod",
+    "chown",
+    "rm",
+    "cat",
+    "grep",
+    "sed",
 ]
 
 
@@ -323,8 +328,12 @@ def main(argv: list[str] | None = None) -> None:
         app.add_file(src, dst)
 
     if args.filetools:
-        for path in FILETOOLS:
-            app.add_file(path)
+        for name in FILETOOLS:
+            resolved = shutil.which(name)
+            if resolved is None:
+                LOG.warning("--filetools: %r not found on PATH; skipping", name)
+                continue
+            app.add_file(resolved)
 
     for user in args.user:
         app.add_user(user)
