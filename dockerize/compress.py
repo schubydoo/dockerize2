@@ -11,6 +11,14 @@ from pathlib import Path
 from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
 
+__all__ = [
+    "CompressionLevel",
+    "UpxNotFoundError",
+    "compress",
+    "compress_tree",
+    "find_upx",
+]
+
 LOG = logging.getLogger(__name__)
 
 # UPX won't shrink anything smaller than this meaningfully, and the per-file

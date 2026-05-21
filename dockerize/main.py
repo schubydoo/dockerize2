@@ -13,6 +13,8 @@ from .compress import CompressionLevel
 from .dockerize import DEFAULT_NSS_MODULES, Dockerize, SymlinkOptions
 from .sbom import SBOMFormat
 
+__all__ = ["FILETOOLS", "CliArgs", "main", "parse_args"]
+
 LOG = logging.getLogger(__name__)
 
 FILETOOLS: list[str] = [
