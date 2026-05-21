@@ -21,6 +21,8 @@ from .oci_output import build_oci_archive
 from .sbom import SBOMFormat, generate_sbom
 from .security import is_sensitive_path
 
+__all__ = ["DEFAULT_NSS_MODULES", "PROJECT_SOURCE_URL", "Dockerize", "SymlinkOptions"]
+
 DEFAULT_NSS_MODULES: tuple[str, ...] = ("files", "dns")
 PROJECT_SOURCE_URL = "https://github.com/schubydoo/dockerize2"
 

@@ -12,6 +12,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+__all__ = ["OciOutputError", "build_oci_archive"]
+
 LOG = logging.getLogger(__name__)
 
 

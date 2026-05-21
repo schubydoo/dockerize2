@@ -8,6 +8,8 @@ import subprocess
 from enum import StrEnum
 from pathlib import Path
 
+__all__ = ["SBOMFormat", "SyftNotFoundError", "find_syft", "generate_sbom"]
+
 LOG = logging.getLogger(__name__)
 
 

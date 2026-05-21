@@ -19,6 +19,8 @@ from elftools.elf.elffile import ELFFile
 
 from .security import loader_env
 
+__all__ = ["DepSolver"]
+
 LOADER_TIMEOUT_SECONDS = 15
 
 LOG = logging.getLogger(__name__)

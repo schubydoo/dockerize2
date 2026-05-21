@@ -5,6 +5,8 @@ from __future__ import annotations
 import fnmatch
 from pathlib import Path
 
+__all__ = ["SENSITIVE_PATTERNS", "is_sensitive_path", "loader_env"]
+
 # Files that almost never belong in a dockerize-produced image. We reject these
 # unless the caller passes ``--allow-sensitive``.
 SENSITIVE_PATTERNS: tuple[str, ...] = (
