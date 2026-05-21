@@ -40,6 +40,25 @@
       "matchPackageNames": ["jinja2", "pyelftools"],
       "matchManagers": ["pep621"],
       "groupName": "python-core-deps"
+    },
+    {
+      "description": "Roll all non-major GitHub Actions updates into one weekly PR.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "github-actions (non-major)"
+    },
+    {
+      "description": "Group docker/* official action majors — they release in lockstep.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": [
+        "docker/build-push-action",
+        "docker/login-action",
+        "docker/metadata-action",
+        "docker/setup-buildx-action",
+        "docker/setup-qemu-action"
+      ],
+      "matchUpdateTypes": ["major"],
+      "groupName": "docker/* actions (major)"
     }
   ]
 }
