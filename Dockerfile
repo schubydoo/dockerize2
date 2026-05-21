@@ -76,7 +76,7 @@ RUN set -eux; \
     case "$arch" in \
       x86_64)   upx_arch=amd64_linux;  bx_arch=linux-amd64 ;; \
       aarch64)  upx_arch=arm64_linux;  bx_arch=linux-arm64 ;; \
-      armv7l)   upx_arch=armeb_linux;  bx_arch=linux-arm-v7 ;; \
+      armv7l)   upx_arch=arm_linux;    bx_arch=linux-arm-v7 ;; \
       *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     curl -fsSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-${upx_arch}.tar.xz" \
