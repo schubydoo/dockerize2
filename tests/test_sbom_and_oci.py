@@ -114,6 +114,83 @@ def test_oci_output_no_engine_raises(tmp_path: Path) -> None:
         build_oci_archive(ctx, out)
 
 
+def test_oci_output_buildx_build_failure_propagates(tmp_path: Path) -> None:
+    """A non-zero exit from `docker buildx build` should surface as
+    CalledProcessError so the caller sees the actual failure rather than
+    silently producing a missing archive."""
+    import subprocess
+
+    ctx = tmp_path / "ctx"
+    ctx.mkdir()
+    out = tmp_path / "image.oci.tar"
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch.object(oci_output, "_has_buildx", return_value=True),
+        patch(
+            "subprocess.check_call",
+            side_effect=subprocess.CalledProcessError(2, "docker buildx build"),
+        ),
+        pytest.raises(subprocess.CalledProcessError),
+    ):
+        build_oci_archive(ctx, out, tag="img:1")
+
+
+def test_oci_output_podman_build_failure_propagates(tmp_path: Path) -> None:
+    """If the podman fallback's `build` step exits non-zero, the error
+    propagates. The follow-up `save` step must not be invoked."""
+    import subprocess
+
+    ctx = tmp_path / "ctx"
+    ctx.mkdir()
+    out = tmp_path / "image.oci.tar"
+
+    def which_side_effect(cmd: str) -> str | None:
+        return "/usr/bin/podman" if cmd == "podman" else None
+
+    with (
+        patch("shutil.which", side_effect=which_side_effect),
+        patch.object(oci_output, "_has_buildx", return_value=False),
+        patch(
+            "subprocess.check_call",
+            side_effect=subprocess.CalledProcessError(1, "podman build"),
+        ) as run,
+        pytest.raises(subprocess.CalledProcessError),
+    ):
+        build_oci_archive(ctx, out, tag="img:1")
+    # Only the build call should have been attempted; `save` never reached.
+    assert run.call_count == 1
+
+
+def test_oci_output_podman_save_failure_propagates(tmp_path: Path) -> None:
+    """If `podman build` succeeds but `podman save` fails, the error from
+    save reaches the caller and the partial output isn't claimed as success."""
+    import subprocess
+
+    ctx = tmp_path / "ctx"
+    ctx.mkdir()
+    out = tmp_path / "image.oci.tar"
+
+    def which_side_effect(cmd: str) -> str | None:
+        return "/usr/bin/podman" if cmd == "podman" else None
+
+    call_count = {"n": 0}
+
+    def check_call_side_effect(argv: list[str], *args: object, **kwargs: object) -> None:
+        call_count["n"] += 1
+        if call_count["n"] == 2:  # the save call
+            raise subprocess.CalledProcessError(3, "podman save")
+
+    with (
+        patch("shutil.which", side_effect=which_side_effect),
+        patch.object(oci_output, "_has_buildx", return_value=False),
+        patch("subprocess.check_call", side_effect=check_call_side_effect),
+        pytest.raises(subprocess.CalledProcessError, match="podman save"),
+    ):
+        build_oci_archive(ctx, out, tag="img:1")
+    assert call_count["n"] == 2
+
+
 # -------- CLI plumbing ----------------------------------------------------
 
 
