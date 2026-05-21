@@ -34,6 +34,13 @@ jobs:
           enable-cache: false
       - name: Build
         run: uv build
+      - name: Upload dist artefacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
       - name: Publish to TestPyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
@@ -67,6 +74,12 @@ jobs:
 
       - name: Image metadata
         id: meta
+        # Annotate at both per-arch (manifest) AND manifest-list (index)
+        # levels. GHCR's package UI reads the description from the
+        # manifest-list-level annotation; without `index` here the
+        # package page shows "No description provided."
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -85,6 +98,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha
@@ -103,3 +117,43 @@ jobs:
           for tag in $TAGS; do
             cosign sign --yes "${tag}@${DIGEST}"
           done
+
+  github-release:
+    name: GitHub Release
+    needs: [testpypi, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Download dist artefacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
+      - name: Extract changelog section
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          awk -v ver="$version" '
+            /^## / {
+              if (found) exit
+              if ($0 ~ "\\["ver"\\]") { found = 1; next }
+            }
+            found
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::no CHANGELOG section found for [${version}]"
+            exit 1
+          fi
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@aec2ec56f94eb8180ceec724245f64ef008b89f5 # v2.4.0
+        with:
+          body_path: release-notes.md
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: false
