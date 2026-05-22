@@ -114,26 +114,26 @@ def test_oci_output_no_engine_raises(tmp_path: Path) -> None:
         build_oci_archive(ctx, out)
 
 
-def test_oci_output_buildx_build_failure_propagates(tmp_path: Path) -> None:
-    """A non-zero exit from `docker buildx build` should surface as
-    CalledProcessError so the caller sees the actual failure rather than
-    silently producing a missing archive."""
+def test_oci_output_buildx_build_failure_raises_actionable_error(tmp_path: Path) -> None:
+    """A non-zero exit from `docker buildx build` must surface as an
+    actionable OciOutputError (chained from the CalledProcessError), naming
+    the containerd-image-store / docker-container-driver way out — not an
+    opaque CalledProcessError, and never a silently-missing archive."""
     import subprocess
 
     ctx = tmp_path / "ctx"
     ctx.mkdir()
     out = tmp_path / "image.oci.tar"
 
+    cpe = subprocess.CalledProcessError(2, "docker buildx build")
     with (
         patch("shutil.which", return_value="/usr/bin/docker"),
         patch.object(oci_output, "_has_buildx", return_value=True),
-        patch(
-            "subprocess.check_call",
-            side_effect=subprocess.CalledProcessError(2, "docker buildx build"),
-        ),
-        pytest.raises(subprocess.CalledProcessError),
+        patch("subprocess.check_call", side_effect=cpe),
+        pytest.raises(OciOutputError, match="containerd image store") as excinfo,
     ):
         build_oci_archive(ctx, out, tag="img:1")
+    assert excinfo.value.__cause__ is cpe
 
 
 def test_oci_output_podman_build_failure_propagates(tmp_path: Path) -> None:

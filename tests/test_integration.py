@@ -85,6 +85,70 @@ def test_build_with_compress_actually_compresses(tmp_path: Path) -> None:
 
 @integration_only
 @linux_only
+def test_output_oci_runs_buildx_path(tmp_path: Path) -> None:
+    """End-to-end: --output-oci drives the real docker buildx OCI path.
+
+    The unit tests in test_sbom_and_oci.py mock subprocess, so this is the
+    only place the daemon-backed buildx OCI path actually runs. Whether it
+    succeeds depends on the daemon: buildx's default ``docker`` driver only
+    exports OCI when the containerd image store is enabled. Both outcomes are
+    valid and asserted here:
+
+    * containerd store / container driver available -> a valid OCI archive;
+    * stock daemon -> an actionable ``OciOutputError`` (NOT an opaque
+      ``CalledProcessError``).
+    """
+    from dockerize.oci_output import OciOutputError
+
+    docker = shutil.which("docker")
+    if docker is None:
+        pytest.skip("docker not on PATH")
+    if subprocess.run([docker, "buildx", "version"], capture_output=True).returncode != 0:
+        pytest.skip("docker buildx not available")
+
+    ctx = tmp_path / "ctx"
+    archive = tmp_path / "image.oci.tar"
+    app = Dockerize(
+        targetdir=str(ctx),
+        tag="dockerize2-test-oci:integration",
+        entrypoint="/bin/ls",
+        symlinks=SymlinkOptions.COPY_ALL,
+        output_oci=archive,
+    )
+    app.add_file("/bin/ls")
+
+    try:
+        app.build()
+    except OciOutputError as err:
+        # Stock daemon without the containerd image store: the failure must be
+        # actionable, naming the way out — not a bare CalledProcessError.
+        message = str(err)
+        assert "containerd image store" in message
+        assert "docker-container" in message
+        return
+
+    # Daemon can export OCI: the archive must be a real OCI image layout, i.e.
+    # an oci-layout marker plus an index.json whose first manifest digest
+    # resolves to a blob present in the archive.
+    import tarfile
+
+    assert archive.exists() and archive.stat().st_size > 0
+    with tarfile.open(archive) as tf:
+        names = set(tf.getnames())
+        assert "oci-layout" in names
+        assert "index.json" in names
+        index_member = tf.extractfile("index.json")
+        assert index_member is not None
+        index = json.loads(index_member.read())
+
+    manifests = index["manifests"]
+    assert manifests, "OCI index declares no manifests"
+    algo, _, hexdigest = manifests[0]["digest"].partition(":")
+    assert f"blobs/{algo}/{hexdigest}" in names, "manifest blob missing from archive"
+
+
+@integration_only
+@linux_only
 def test_build_with_sbom_writes_spdx(tmp_path: Path) -> None:
     """End-to-end: --sbom should produce a parseable SPDX JSON file."""
     if shutil.which("syft") is None:
