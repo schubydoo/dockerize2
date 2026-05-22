@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3](https://github.com/schubydoo/dockerize2/compare/v0.3.2...v0.3.3) (2026-05-22)
+
+
+### Bug Fixes
+
+* add tool and command context to subprocess failures ([#82](https://github.com/schubydoo/dockerize2/issues/82)) ([f3a9566](https://github.com/schubydoo/dockerize2/commit/f3a9566cf241f837c9f0b8b142afed58985e92bc))
+
 ## [Unreleased]
 
 ### Added
