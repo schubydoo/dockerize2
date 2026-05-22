@@ -5,6 +5,27 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/schubydoo/dockerize2/compare/v0.3.3...v0.4.0) (2026-05-22)
+
+`--output-oci` is now fully daemonless, and the runtime image drops the
+docker-buildx plugin — a smaller image that also clears the bundled-binary
+CVEs that plugin and the older docker CLI carried.
+
+### Features
+
+* **Native OCI archive writer** ([#87](https://github.com/schubydoo/dockerize2/issues/87)) ([ed91273](https://github.com/schubydoo/dockerize2/commit/ed9127302024193864abb4f15cf5223e4b5657bc)): `--output-oci` assembles the single-layer `FROM scratch` image in pure Python — tar+gzip the staging directory into one layer blob, then write the image config, manifest, `index.json`, and `oci-layout` per the OCI image-layout spec. No daemon, no `buildx`, no `podman`; it works anywhere Python runs. Validated by a `docker load` round-trip and content-addressable digest/diffID checks.
+
+### Changed
+
+* The runtime image no longer bundles the **docker-buildx** plugin — nothing invokes it now that `--output-oci` is native — for a further image-size reduction on top of the v0.3.3 cut.
+* The generated `Dockerfile` is now excluded from the image layer; previously `COPY . /` leaked it into the image root.
+* Removed the now-dead `dockerize doctor` buildx check and the buildx Renovate custom manager.
+
+### Security
+
+* Bumped the bundled static **docker CLI to 29.5.2** (Go 1.26.3), clearing 8 Go-stdlib CVEs Trivy flagged against the bundled `docker` binary (5 high / 3 medium).
+* Dropping docker-buildx also removes the 2 vendored-`docker/docker` CVEs (CVE-2026-34040, CVE-2026-33997) that the bundled buildx binary carried.
+
 ## [0.3.3](https://github.com/schubydoo/dockerize2/compare/v0.3.2...v0.3.3) (2026-05-22)
 
 Rolls up the security, container, automation, and documentation hardening
