@@ -138,6 +138,7 @@ CLAUDE.local.md
 GEMINI.md
 AGENTS.md
 .claude/
+.gitnexus/
 .cursor/
 .cursorrules
 .cursorignore
