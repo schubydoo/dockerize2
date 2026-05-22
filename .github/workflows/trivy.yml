@@ -68,3 +68,54 @@ jobs:
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
+
+  image-pr:
+    name: image scan (PR build)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      # On master/cron the `image` job re-scans the published :latest, which
+      # cannot reflect a Dockerfile change in an open PR. This job builds the
+      # PR's own Dockerfile and scans THAT image, so a PR that introduces a
+      # vulnerable package (or breaks the build outright) is caught here.
+      #
+      # The build step IS gating: a Dockerfile that fails to build fails the
+      # job. The Trivy scan is report-only for the same reason as the `image`
+      # job above (bundled third-party binaries → un-actionable CVEs); it
+      # uploads under the shared `trivy-image` category so code scanning can
+      # diff PR findings against the master baseline.
+      #
+      # Single-platform (amd64) so the image can be --loaded for scanning;
+      # buildx cannot --load a multi-arch manifest. Cross-arch build breakage
+      # is still caught at release time by release.yml's multi-arch build.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Build PR image (load to runner)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: dockerize2:pr
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Trivy image (PR build)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: dockerize2:pr
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
