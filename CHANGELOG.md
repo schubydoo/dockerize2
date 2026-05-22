@@ -5,74 +5,73 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.3](https://github.com/schubydoo/dockerize2/compare/v0.3.2...v0.3.3) (2026-05-22)
+
+Rolls up the security, container, automation, and documentation hardening
+since v0.3.2. This is also the first release published to **production PyPI**.
 
 ### Added
-- **Release Please** now automates version tagging and CHANGELOG
-  maintenance. Each push to `master` re-evaluates Conventional Commits
-  since the last tag; if there's a `feat:`, `fix:`, or `perf:`, an
-  auto-opened "release PR" bumps `__version__` in
-  `dockerize/__init__.py`, rewrites `CHANGELOG.md`, and updates
-  `.release-please-manifest.json`. Merging the release PR fires the
-  existing `release.yml` (PyPI + GHCR multi-arch image). Config in
-  `release-please-config.json` and `.github/workflows/release-please.yml`;
-  Conventional Commits reference added to `CONTRIBUTING.md`.
-- Inline comment in the `Dockerfile` runtime stage documenting why no
-  `USER` directive is set: the default `--runtime docker` path needs
-  the host's root-owned Docker socket, and the buildx CLI plugin lives
-  under `/root/.docker/cli-plugins`. The comment also points users who
-  don't need the daemon path to `--output-oci PATH`, which works
-  without the socket and can be combined with `docker run --user` to
-  drop privileges at invocation time.
-- Community health files: a placeholder `CODE_OF_CONDUCT.md` (to be
-  replaced with a substantive policy in a follow-up), a
-  `.github/PULL_REQUEST_TEMPLATE.md` reminding contributors of the
-  conventions (Conventional Commits, signed commits, CHANGELOG
-  entries), and `.github/ISSUE_TEMPLATE/` with `bug_report.md`,
-  `feature_request.md`, and a `config.yml` that routes security
-  reports to the private-advisory flow.
-- Two PyPI Trove classifiers added to `pyproject.toml`: the explicit
-  GPLv3+ license (`License :: OSI Approved :: GNU General Public
-  License v3 or later (GPLv3+)`) and the CPython implementation
-  (`Programming Language :: Python :: Implementation :: CPython`).
-  Improves PyPI discoverability and the package's metadata accuracy.
-- New "Acknowledgements" section in `README.md` and a "Development
-  assistance" paragraph in `NOTICE` disclose that this fork is
-  developed with assistance from Claude (Anthropic) as a
-  pair-programming and code-review tool, while the maintainer directs
-  all work and retains editorial control over merges. Original-project
-  credit to `dockerize` and Lars Kellogg-Stedman is unchanged in
-  `NOTICE` and the README fork-context callout.
+
+* **Release Please** automates version tagging and CHANGELOG maintenance:
+  each push to `master` re-evaluates Conventional Commits since the last tag
+  and, on a `feat:`/`fix:`/`perf:`, opens a release PR that bumps
+  `__version__`, rewrites the CHANGELOG, and updates the manifest. Merging it
+  fires `release.yml` (PyPI + GHCR multi-arch image).
+* Community health files: a `CODE_OF_CONDUCT.md`, a pull-request template, and
+  issue templates (bug report, feature request, and a config routing security
+  reports to the private-advisory flow).
+* PyPI Trove classifiers for the GPLv3+ license and the CPython implementation.
+* An "Acknowledgements" section (README) and "Development assistance" note
+  (NOTICE) disclosing AI-assisted development; original-project credit to
+  `dockerize` / Lars Kellogg-Stedman is unchanged.
+* Inline `Dockerfile` comment documenting why the runtime stage runs as root
+  (the `--runtime docker` path needs the host's root-owned socket) and
+  pointing socket-averse users to `--output-oci`.
 
 ### Changed
-- Branch protection now requires the Zizmor (`workflow audit`) check
-  to pass before a PR can merge. Previously Zizmor ran on every PR
-  but its result didn't gate merges. `OSSF Scorecard` is intentionally
-  not gated — its workflow has no `pull_request:` trigger, so making
-  it required would leave every PR perpetually pending.
+
+* The runtime container image is ~39% smaller (**~754 MB → ~460 MB**): the
+  full `docker.io` engine is replaced with the static Docker CLI — dropping
+  the unused `dockerd`/`containerd`/`runc` and upgrading the client from
+  20.10 to 29.x.
+* `--output-oci` now raises an actionable error when the buildx driver cannot
+  export an OCI archive (pointing to the containerd image store, a
+  `docker-container` builder, or `--runtime podman`) instead of failing
+  opaquely.
+* Branch protection now requires the Zizmor `workflow audit` and the
+  `conventional PR title` checks to pass before a PR can merge.
+* Replaced defensive `assert` statements in `Dockerize` with explicit
+  `RuntimeError`s via a `_require_targetdir()` helper — `assert` is a no-op
+  under `python -O`, so the prior checks could silently bypass.
 
 ### Security
-- Trivy image scan now fails the workflow on findings (the scan and
-  SARIF-upload steps no longer carry `continue-on-error: true`), so a
-  `CRITICAL` or `HIGH` CVE in the runtime image stops merges instead
-  of passing CI silently.
-- Image-scan severity threshold aligned to `CRITICAL,HIGH,MEDIUM` to
-  match the filesystem scan; `MEDIUM` findings in the runtime image
-  are no longer invisible.
-- Enabled ruff's `flake8-bandit` (`S`) rule set so security
-  anti-patterns (hardcoded secrets, unsafe `subprocess` usage,
-  insecure temp files, jinja2 autoescape) are caught at lint time.
-  `S603` is project-wide-ignored because the codebase consistently
-  uses list-form `subprocess` argv (`S602` still catches `shell=True`
-  regressions). Test-only rules `S101`/`S108` are scoped to
-  `tests/*` so pytest's `assert` idiom continues to work.
 
-### Changed
-- Replaced all `assert` statements used for defensive runtime
-  validation in `Dockerize` with explicit `RuntimeError` raises via
-  a new `_require_targetdir()` helper. `assert` is a no-op under
-  `python -O`, so the prior checks could silently bypass and surface
-  as `AttributeError` later in the build.
+* Pull the security-patched `libgnutls30` (`3.7.9-2+deb12u7`) over the pinned
+  base image, resolving a batch of GnuTLS CVEs (2 critical, 3 high, 7 medium)
+  that the upstream base image had not yet picked up.
+* Trivy hard-gates the **filesystem** scan on fixable CVEs in our own
+  dependencies; the **image** scan reports to the Security tab (report-only,
+  as it covers bundled third-party binaries we usually can't action).
+  Severities aligned to `CRITICAL,HIGH,MEDIUM`.
+* Enabled ruff's `flake8-bandit` (`S`) rules to catch security anti-patterns
+  (hardcoded secrets, unsafe `subprocess`, insecure temp files) at lint time.
+
+### Bug Fixes
+
+* add tool and command context to subprocess failures ([#82](https://github.com/schubydoo/dockerize2/issues/82)) ([f3a9566](https://github.com/schubydoo/dockerize2/commit/f3a9566cf241f837c9f0b8b142afed58985e92bc))
+
+### Documentation
+
+* Refreshed `examples/` for the current CLI and added `jq`, `curl`, `ffmpeg`,
+  `sqlite3`, and static-Go examples; replaced the defunct `thttpd` example
+  with `mini-httpd`. Corrected the `--output-oci` daemon/socket documentation.
+
+### Continuous Integration
+
+* Pull requests now build the Dockerfile and Trivy-scan the resulting image.
+* Releases publish to production PyPI via Trusted Publishing (OIDC), gated by
+  a `pypi` environment that restricts deployment to `v*` tags and requires
+  maintainer approval.
 
 ## [0.3.2] - 2026-05-20
 
