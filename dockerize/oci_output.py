@@ -4,10 +4,14 @@ Uses ``docker buildx build --output type=oci,dest=<path>`` (or ``podman build
 --format oci`` followed by ``podman save``). The output is a portable OCI
 archive rather than an image loaded into a local store.
 
-Note: the ``docker buildx`` path still requires a reachable Docker daemon —
-buildx's default ``docker`` driver delegates to the daemon, and bootstrapping
-a ``docker-container`` driver needs the daemon too. Only the ``podman``
-fallback (``--runtime podman``) is truly daemonless.
+Note: the ``docker buildx`` path needs more than a reachable daemon. buildx's
+default ``docker`` driver can only export an OCI archive when the daemon has
+the containerd image store enabled; on a stock daemon it fails with "OCI
+exporter is not supported for the docker driver". The alternatives are a
+container-based builder (``docker buildx create --use --driver
+docker-container``, which itself needs the daemon) or the daemonless ``podman``
+fallback (``--runtime podman``). When buildx export fails, this module raises
+:class:`OciOutputError` with that guidance.
 """
 
 from __future__ import annotations
@@ -63,7 +67,23 @@ def build_oci_archive(
             argv += ["-t", tag]
         argv.append(str(context_dir))
         LOG.info("building OCI archive via docker buildx -> %s", output_path)
-        subprocess.check_call(argv)
+        try:
+            subprocess.check_call(argv)
+        except subprocess.CalledProcessError as err:
+            # The most common failure: buildx's default `docker` driver only
+            # supports the OCI exporter when the daemon has the containerd
+            # image store enabled. On a stock daemon the build aborts with
+            # "OCI exporter is not supported for the docker driver". docker's
+            # own stderr is already on the console; add an actionable hint.
+            raise OciOutputError(
+                "`docker buildx build --output type=oci` failed. The default "
+                "`docker` buildx driver can only export an OCI archive when the "
+                "daemon's containerd image store is enabled. Enable the "
+                "containerd image store, create a container-based builder "
+                "(`docker buildx create --use --driver docker-container`), or "
+                "build with the daemonless `--runtime podman`. See docker's "
+                "error above for the underlying cause."
+            ) from err
         return output_path
 
     podman = shutil.which("podman")

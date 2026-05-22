@@ -184,11 +184,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Emit an OCI image archive to PATH instead of loading the image "
-            "into a local store. Uses `docker buildx` (which still needs a "
-            "reachable Docker daemon, e.g. a mounted /var/run/docker.sock); "
-            "falls back to `podman save --format oci-archive`, which is "
-            "daemonless. The benefit over the default build is the portable "
-            "OCI archive, not avoiding the daemon."
+            "into a local store. Uses `docker buildx`, whose default `docker` "
+            "driver only exports OCI when the daemon's containerd image store "
+            "is enabled (otherwise create a `docker buildx create --driver "
+            "docker-container` builder); falls back to daemonless `podman save "
+            "--format oci-archive`. The benefit is the portable OCI archive, "
+            "not avoiding the daemon."
         ),
     )
 

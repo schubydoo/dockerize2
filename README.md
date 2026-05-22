@@ -39,11 +39,16 @@ A pre-built multi-arch image is available at
 - `linux/arm/v7` (32-bit hardware-float ABI — Raspberry Pi 32-bit, etc.)
 
 OCI-archive output — produces a portable OCI tarball instead of loading the
-image into a local store. `docker buildx` still talks to the Docker daemon,
-so the socket is mounted here too; the difference from classic mode is the
-self-contained `.oci.tar` (plus a matching SBOM) that you load yourself. A
-fully daemonless build is only possible with `--runtime podman`, which is
-not bundled in this image — you would supply podman yourself.
+image into a local store. The difference from classic mode is the
+self-contained `.oci.tar` (plus a matching SBOM) that you load yourself.
+
+Caveat: `docker buildx`'s default `docker` driver can only export an OCI
+archive when the daemon has the **containerd image store** enabled (the
+default on Docker Desktop, but not on a stock Linux `docker-ce`). On a daemon
+without it the build fails with "OCI exporter is not supported for the docker
+driver"; create a container-based builder first
+(`docker buildx create --use --driver docker-container`). The only fully
+daemonless path is `--runtime podman`, which is not bundled in this image.
 
 ```bash
 docker run --rm \
