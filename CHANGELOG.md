@@ -7,15 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0](https://github.com/schubydoo/dockerize2/compare/v0.4.0...v0.5.0) (2026-05-22)
 
+A new `:slim` image variant for the daemonless build path, plus an
+image-layer cleanup that reclaims ~12 MB stranded since the bundled tools
+were added.
 
 ### Features
 
-* publish a minimal :slim image variant ([#92](https://github.com/schubydoo/dockerize2/issues/92)) ([11cb864](https://github.com/schubydoo/dockerize2/commit/11cb864fa5a084a736a141d0d5ec60717bab753a))
-
+* **Minimal `:slim` image variant** ([#92](https://github.com/schubydoo/dockerize2/issues/92)) ([11cb864](https://github.com/schubydoo/dockerize2/commit/11cb864fa5a084a736a141d0d5ec60717bab753a)): the image now ships in two flavors built from one multi-stage `Dockerfile`. `:slim` (also tagged `:X.Y.Z-slim`) is just the Python base + `libgnutls` + the `dockerize` wheel — roughly **35–40 MB** compressed versus **~93 MB** for the full `:latest`. Because the native `--output-oci` writer is pure Python, `:slim` is everything you need to pack binaries into a `FROM scratch` OCI archive without a Docker daemon, `buildx`, or `podman`. The full `:latest` (slim + the static docker CLI, `upx`, and `syft`) is unchanged for workflows that still want those tools. Both variants are pushed to GHCR multi-arch and cosign-signed by the release pipeline. Ideal for a multi-stage `COPY --from=ghcr.io/schubydoo/dockerize2:slim` staging step — see the README "Image variants" section.
 
 ### Build System & Dependencies
 
-* consolidate apt layer so build-only tools don't persist ([#90](https://github.com/schubydoo/dockerize2/issues/90)) ([7f41b2a](https://github.com/schubydoo/dockerize2/commit/7f41b2a78d2521f129ffc075e966f86a103eed09))
+* **Consolidated the apt install layer** ([#90](https://github.com/schubydoo/dockerize2/issues/90)) ([7f41b2a](https://github.com/schubydoo/dockerize2/commit/7f41b2a78d2521f129ffc075e966f86a103eed09)): `curl` and `xz-utils` were installed in one layer and purged in a later one — but a purge can't reclaim bytes already committed to an earlier layer, so ~12 MB rode along in every pull. They are now installed, used, and purged inside a single `RUN`, so the build-only tools never persist in the final image.
 
 ## [0.4.0](https://github.com/schubydoo/dockerize2/compare/v0.3.3...v0.4.0) (2026-05-22)
 
