@@ -422,13 +422,24 @@ class Dockerize:
 
         targetdir = self._require_targetdir()
 
-        # --output-oci mode: emit an OCI archive without a docker daemon socket.
+        # --output-oci mode: write a single-layer OCI archive natively — no
+        # daemon, no buildx. ENTRYPOINT/CMD are stored JSON-encoded; decode
+        # them and pass the labels so the image config matches the Dockerfile
+        # the classic path would have rendered.
         if self.output_oci is not None:
+            labels = self.oci_labels()
+            oci_entrypoint = (
+                json.loads(self.docker["entrypoint"]) if "entrypoint" in self.docker else None
+            )
+            oci_cmd = json.loads(self.docker["cmd"]) if "cmd" in self.docker else None
             build_oci_archive(
                 targetdir,
                 self.output_oci,
                 tag=self.docker.get("tag"),
-                runtime=self.docker["runtime"],
+                entrypoint=oci_entrypoint,
+                cmd=oci_cmd,
+                labels=labels,
+                created=labels.get("org.opencontainers.image.created"),
             )
             return
 

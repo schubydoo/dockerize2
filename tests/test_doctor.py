@@ -9,7 +9,6 @@ import pytest
 from dockerize import doctor
 from dockerize.doctor import (
     CheckResult,
-    check_buildx,
     check_python,
     check_tool,
     collect_checks,
@@ -60,42 +59,13 @@ def test_check_tool_present_but_version_fails() -> None:
     assert r.is_ok
 
 
-def test_check_buildx_no_docker() -> None:
-    with patch("shutil.which", return_value=None):
-        r = check_buildx()
-    assert r.status == "missing"
-
-
-def test_check_buildx_available() -> None:
-    with (
-        patch("shutil.which", return_value="/usr/bin/docker"),
-        patch("subprocess.check_call") as run,
-    ):
-        r = check_buildx()
-    run.assert_called_once()
-    assert r.is_ok
-
-
-def test_check_buildx_unavailable() -> None:
-    import subprocess
-
-    with (
-        patch("shutil.which", return_value="/usr/bin/docker"),
-        patch("subprocess.check_call", side_effect=subprocess.CalledProcessError(1, "x")),
-    ):
-        r = check_buildx()
-    assert r.status == "warn"
-
-
 def test_overall_status_no_runtime() -> None:
     results = [
         CheckResult("python", "ok", "3.13.0"),
         CheckResult("docker", "missing"),
         CheckResult("podman", "missing"),
         CheckResult("upx", "missing"),
-        CheckResult("syft", "missing"),
-        CheckResult("docker buildx", "missing"),
-    ]
+        CheckResult("syft", "missing"),    ]
     assert overall_status(results) == 1
 
 
@@ -105,9 +75,7 @@ def test_overall_status_ok_with_podman() -> None:
         CheckResult("docker", "missing"),
         CheckResult("podman", "ok", "/usr/bin/podman"),
         CheckResult("upx", "missing"),
-        CheckResult("syft", "missing"),
-        CheckResult("docker buildx", "missing"),
-    ]
+        CheckResult("syft", "missing"),    ]
     assert overall_status(results) == 0
 
 
@@ -128,9 +96,7 @@ def test_run_returns_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
         CheckResult("docker", "missing"),
         CheckResult("podman", "missing"),
         CheckResult("upx", "missing"),
-        CheckResult("syft", "missing"),
-        CheckResult("docker buildx", "missing"),
-    ]
+        CheckResult("syft", "missing"),    ]
     with patch.object(doctor, "collect_checks", return_value=fake):
         code = run()
     captured = capsys.readouterr()
@@ -145,9 +111,7 @@ def test_run_returns_zero_when_healthy(capsys: pytest.CaptureFixture[str]) -> No
         CheckResult("docker", "ok", "/usr/bin/docker"),
         CheckResult("podman", "missing"),
         CheckResult("upx", "ok"),
-        CheckResult("syft", "ok"),
-        CheckResult("docker buildx", "ok"),
-    ]
+        CheckResult("syft", "ok"),    ]
     with patch.object(doctor, "collect_checks", return_value=fake):
         code = run()
     captured = capsys.readouterr()
@@ -157,7 +121,7 @@ def test_run_returns_zero_when_healthy(capsys: pytest.CaptureFixture[str]) -> No
 
 def test_collect_checks_returns_all_expected_names() -> None:
     names = {r.name for r in collect_checks()}
-    assert {"python", "docker", "podman", "upx", "syft", "docker buildx"} <= names
+    assert {"python", "docker", "podman", "upx", "syft"} <= names
 
 
 def test_main_doctor_subcommand_dispatches() -> None:

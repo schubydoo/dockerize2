@@ -15,7 +15,6 @@ from io import StringIO
 __all__ = [
     "MIN_PYTHON",
     "CheckResult",
-    "check_buildx",
     "check_python",
     "check_tool",
     "collect_checks",
@@ -70,22 +69,6 @@ def check_tool(name: str, version_flag: str = "--version") -> CheckResult:
     return CheckResult(name, "ok", f"{path} - {first}")
 
 
-def check_buildx() -> CheckResult:
-    docker_path = shutil.which("docker")
-    if docker_path is None:
-        return CheckResult("docker buildx", "missing", "docker not on PATH")
-    try:
-        subprocess.check_call(
-            [docker_path, "buildx", "version"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return CheckResult("docker buildx", "warn", "not available")
-    return CheckResult("docker buildx", "ok", "available")
-
-
 def collect_checks() -> list[CheckResult]:
     """Return the standard set of doctor checks."""
     return [
@@ -94,7 +77,6 @@ def collect_checks() -> list[CheckResult]:
         check_tool("podman"),
         check_tool("upx"),
         check_tool("syft"),
-        check_buildx(),
     ]
 
 

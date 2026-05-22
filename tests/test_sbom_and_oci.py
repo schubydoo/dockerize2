@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import gzip
+import hashlib
+import io
+import json
+import tarfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from dockerize import oci_output
 from dockerize.oci_output import OciOutputError, build_oci_archive
 from dockerize.sbom import (
     SBOMFormat,
@@ -81,139 +85,164 @@ def test_generate_sbom_failure_raises_actionable_error(tmp_path: Path) -> None:
     assert excinfo.value.__cause__ is cpe
 
 
-# -------- OCI output ------------------------------------------------------
+# -------- OCI output (native, daemonless) ---------------------------------
 
 
-def test_oci_output_uses_docker_buildx_when_available(tmp_path: Path) -> None:
+def _make_context(tmp_path: Path) -> Path:
+    """A staging dir with files, a nested dir, and a Dockerfile (which must be
+    excluded from the image layer)."""
     ctx = tmp_path / "ctx"
-    ctx.mkdir()
+    (ctx / "bin").mkdir(parents=True)
+    (ctx / "etc").mkdir(parents=True)
+    (ctx / "bin" / "ls").write_bytes(b"\x7fELF fake binary")
+    (ctx / "etc" / "passwd").write_text("root:x:0:0:root:/root:/sbin/nologin\n")
+    (ctx / "Dockerfile").write_text("FROM scratch\nCOPY . /\n")
+    return ctx
+
+
+def _extract(tar: tarfile.TarFile, name: str) -> bytes:
+    member = tar.extractfile(name)
+    assert member is not None, f"{name} missing from archive"
+    return member.read()
+
+
+def _read_archive(archive: Path) -> dict:
+    """Parse an OCI image-layout tar into its components."""
+    with tarfile.open(archive) as tar:
+        names = set(tar.getnames())
+        blobs = {
+            name.split("/")[-1]: _extract(tar, name)
+            for name in names
+            if name.startswith("blobs/sha256/")
+        }
+        index = json.loads(_extract(tar, "index.json"))
+        layout = json.loads(_extract(tar, "oci-layout"))
+    return {"names": names, "blobs": blobs, "index": index, "layout": layout}
+
+
+def _blob(parsed: dict, digest: str) -> bytes:
+    return parsed["blobs"][digest.split(":")[1]]
+
+
+def _manifest_and_config(parsed: dict) -> tuple[dict, dict]:
+    manifests = parsed["index"]["manifests"]
+    assert len(manifests) == 1
+    manifest = json.loads(_blob(parsed, manifests[0]["digest"]))
+    config = json.loads(_blob(parsed, manifest["config"]["digest"]))
+    return manifest, config
+
+
+def test_build_oci_archive_returns_path_and_layout(tmp_path: Path) -> None:
+    ctx = _make_context(tmp_path)
     out = tmp_path / "image.oci.tar"
 
-    with (
-        patch("shutil.which", return_value="/usr/bin/docker"),
-        patch.object(oci_output, "_has_buildx", return_value=True),
-        patch("subprocess.check_call") as run,
-    ):
-        build_oci_archive(ctx, out, tag="img:1")
+    result = build_oci_archive(ctx, out, tag="img:1")
 
-    argv = run.call_args.args[0]
-    assert "/usr/bin/docker" in argv
-    assert "buildx" in argv
-    assert f"type=oci,dest={out}" in argv
-    assert "-t" in argv
-    assert "img:1" in argv
+    assert result == out
+    assert out.exists() and out.stat().st_size > 0
+    parsed = _read_archive(out)
+    assert parsed["layout"] == {"imageLayoutVersion": "1.0.0"}
+    assert "oci-layout" in parsed["names"]
+    assert "index.json" in parsed["names"]
 
 
-def test_oci_output_falls_back_to_podman(tmp_path: Path) -> None:
-    ctx = tmp_path / "ctx"
-    ctx.mkdir()
+def test_build_oci_archive_digests_resolve(tmp_path: Path) -> None:
+    """index -> manifest -> {config, layer}: every digest is the sha256 of the
+    blob it names, every referenced blob is present, and sizes match."""
+    ctx = _make_context(tmp_path)
     out = tmp_path / "image.oci.tar"
+    build_oci_archive(ctx, out, tag="img:1")
+    parsed = _read_archive(out)
 
-    def which_side_effect(cmd: str) -> str | None:
-        return "/usr/bin/podman" if cmd == "podman" else None
+    # Content-addressable integrity: each blob's filename == sha256(content).
+    for hexname, content in parsed["blobs"].items():
+        assert hashlib.sha256(content).hexdigest() == hexname
 
-    with (
-        patch("shutil.which", side_effect=which_side_effect),
-        patch.object(oci_output, "_has_buildx", return_value=False),
-        patch("subprocess.check_call") as run,
-    ):
-        build_oci_archive(ctx, out, tag="img:1")
+    manifests = parsed["index"]["manifests"]
+    assert manifests[0]["mediaType"] == "application/vnd.oci.image.manifest.v1+json"
+    assert manifests[0]["platform"]["os"] == "linux"
+    assert manifests[0]["annotations"]["org.opencontainers.image.ref.name"] == "img:1"
 
-    # Two podman invocations: build then save.
-    assert run.call_count == 2
-    build_argv, save_argv = run.call_args_list[0].args[0], run.call_args_list[1].args[0]
-    assert "build" in build_argv
-    assert "save" in save_argv
-    assert "oci-archive" in save_argv
+    manifest, config = _manifest_and_config(parsed)
+    config_desc = manifest["config"]
+    layer_desc = manifest["layers"][0]
+    assert config_desc["mediaType"] == "application/vnd.oci.image.config.v1+json"
+    assert layer_desc["mediaType"] == "application/vnd.oci.image.layer.v1.tar+gzip"
+    assert config_desc["size"] == len(_blob(parsed, config_desc["digest"]))
+    assert layer_desc["size"] == len(_blob(parsed, layer_desc["digest"]))
+
+    # diffID is the sha256 of the *uncompressed* layer tar.
+    raw = gzip.decompress(_blob(parsed, layer_desc["digest"]))
+    assert config["rootfs"]["diff_ids"] == ["sha256:" + hashlib.sha256(raw).hexdigest()]
 
 
-def test_oci_output_no_engine_raises(tmp_path: Path) -> None:
-    ctx = tmp_path / "ctx"
-    ctx.mkdir()
+def test_build_oci_archive_layer_excludes_dockerfile(tmp_path: Path) -> None:
+    ctx = _make_context(tmp_path)
     out = tmp_path / "image.oci.tar"
-    with (
-        patch("shutil.which", return_value=None),
-        pytest.raises(OciOutputError, match="docker buildx"),
-    ):
-        build_oci_archive(ctx, out)
+    build_oci_archive(ctx, out)
+    parsed = _read_archive(out)
+
+    manifest, _config = _manifest_and_config(parsed)
+    raw = gzip.decompress(_blob(parsed, manifest["layers"][0]["digest"]))
+    with tarfile.open(fileobj=io.BytesIO(raw)) as layer:
+        layer_names = set(layer.getnames())
+
+    assert "bin/ls" in layer_names
+    assert "etc/passwd" in layer_names
+    assert "Dockerfile" not in layer_names
 
 
-def test_oci_output_buildx_build_failure_raises_actionable_error(tmp_path: Path) -> None:
-    """A non-zero exit from `docker buildx build` must surface as an
-    actionable OciOutputError (chained from the CalledProcessError), naming
-    the containerd-image-store / docker-container-driver way out — not an
-    opaque CalledProcessError, and never a silently-missing archive."""
-    import subprocess
-
-    ctx = tmp_path / "ctx"
-    ctx.mkdir()
+def test_build_oci_archive_sets_entrypoint_cmd_labels(tmp_path: Path) -> None:
+    ctx = _make_context(tmp_path)
     out = tmp_path / "image.oci.tar"
+    build_oci_archive(
+        ctx,
+        out,
+        entrypoint=["/bin/ls"],
+        cmd=["-l"],
+        labels={"org.opencontainers.image.title": "demo"},
+        architecture="amd64",
+    )
+    _, config = _manifest_and_config(_read_archive(out))
 
-    cpe = subprocess.CalledProcessError(2, "docker buildx build")
-    with (
-        patch("shutil.which", return_value="/usr/bin/docker"),
-        patch.object(oci_output, "_has_buildx", return_value=True),
-        patch("subprocess.check_call", side_effect=cpe),
-        pytest.raises(OciOutputError, match="containerd image store") as excinfo,
-    ):
-        build_oci_archive(ctx, out, tag="img:1")
-    assert excinfo.value.__cause__ is cpe
+    assert config["config"]["Entrypoint"] == ["/bin/ls"]
+    assert config["config"]["Cmd"] == ["-l"]
+    assert config["config"]["Labels"] == {"org.opencontainers.image.title": "demo"}
+    assert config["architecture"] == "amd64"
+    assert config["os"] == "linux"
 
 
-def test_oci_output_podman_build_failure_raises_actionable_error(tmp_path: Path) -> None:
-    """If the podman fallback's `build` step exits non-zero, it surfaces as an
-    OciOutputError naming the tool + command (chained from CalledProcessError),
-    and the follow-up `save` step must not be invoked."""
-    import subprocess
-
-    ctx = tmp_path / "ctx"
-    ctx.mkdir()
+def test_build_oci_archive_detects_host_arch(tmp_path: Path) -> None:
+    ctx = _make_context(tmp_path)
     out = tmp_path / "image.oci.tar"
+    build_oci_archive(ctx, out)  # no architecture -> host detection
+    _, config = _manifest_and_config(_read_archive(out))
 
-    def which_side_effect(cmd: str) -> str | None:
-        return "/usr/bin/podman" if cmd == "podman" else None
-
-    cpe = subprocess.CalledProcessError(1, "podman build")
-    with (
-        patch("shutil.which", side_effect=which_side_effect),
-        patch.object(oci_output, "_has_buildx", return_value=False),
-        patch("subprocess.check_call", side_effect=cpe) as run,
-        pytest.raises(OciOutputError, match=r"podman failed.*building the image") as excinfo,
-    ):
-        build_oci_archive(ctx, out, tag="img:1")
-    # Only the build call should have been attempted; `save` never reached.
-    assert run.call_count == 1
-    assert excinfo.value.__cause__ is cpe
+    assert config["architecture"] in {
+        "amd64",
+        "arm64",
+        "arm",
+        "386",
+        "ppc64le",
+        "s390x",
+        "riscv64",
+    }
 
 
-def test_oci_output_podman_save_failure_raises_actionable_error(tmp_path: Path) -> None:
-    """If `podman build` succeeds but `podman save` fails, it surfaces as an
-    OciOutputError naming the export step, so the partial output isn't claimed
-    as success."""
-    import subprocess
+def test_build_oci_archive_is_reproducible(tmp_path: Path) -> None:
+    """Identical content + pinned ``created`` -> byte-identical blob set."""
+    ctx = _make_context(tmp_path)
+    a, b = tmp_path / "a.tar", tmp_path / "b.tar"
+    kwargs = {"tag": "img:1", "created": "2020-01-01T00:00:00Z", "architecture": "amd64"}
+    build_oci_archive(ctx, a, **kwargs)
+    build_oci_archive(ctx, b, **kwargs)
 
-    ctx = tmp_path / "ctx"
-    ctx.mkdir()
-    out = tmp_path / "image.oci.tar"
+    assert set(_read_archive(a)["blobs"]) == set(_read_archive(b)["blobs"])
 
-    def which_side_effect(cmd: str) -> str | None:
-        return "/usr/bin/podman" if cmd == "podman" else None
 
-    call_count = {"n": 0}
-
-    def check_call_side_effect(argv: list[str], *args: object, **kwargs: object) -> None:
-        call_count["n"] += 1
-        if call_count["n"] == 2:  # the save call
-            raise subprocess.CalledProcessError(3, "podman save")
-
-    with (
-        patch("shutil.which", side_effect=which_side_effect),
-        patch.object(oci_output, "_has_buildx", return_value=False),
-        patch("subprocess.check_call", side_effect=check_call_side_effect),
-        pytest.raises(OciOutputError, match=r"podman failed.*exporting the OCI archive"),
-    ):
-        build_oci_archive(ctx, out, tag="img:1")
-    assert call_count["n"] == 2
+def test_build_oci_archive_missing_context_raises(tmp_path: Path) -> None:
+    with pytest.raises(OciOutputError, match="context directory"):
+        build_oci_archive(tmp_path / "nope", tmp_path / "x.tar")
 
 
 # -------- CLI plumbing ----------------------------------------------------

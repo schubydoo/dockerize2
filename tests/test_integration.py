@@ -6,10 +6,14 @@ These build a real Docker image from a real binary and require ``docker`` or
 
 from __future__ import annotations
 
+import gzip
+import hashlib
+import io
 import json
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -85,26 +89,19 @@ def test_build_with_compress_actually_compresses(tmp_path: Path) -> None:
 
 @integration_only
 @linux_only
-def test_output_oci_runs_buildx_path(tmp_path: Path) -> None:
-    """End-to-end: --output-oci drives the real docker buildx OCI path.
+def test_output_oci_writes_native_archive(tmp_path: Path) -> None:
+    """End-to-end: --output-oci assembles a valid OCI image-layout archive from
+    a real binary build — no docker, no buildx, no daemon.
 
-    The unit tests in test_sbom_and_oci.py mock subprocess, so this is the
-    only place the daemon-backed buildx OCI path actually runs. Whether it
-    succeeds depends on the daemon: buildx's default ``docker`` driver only
-    exports OCI when the containerd image store is enabled. Both outcomes are
-    valid and asserted here:
-
-    * containerd store / container driver available -> a valid OCI archive;
-    * stock daemon -> an actionable ``OciOutputError`` (NOT an opaque
-      ``CalledProcessError``).
+    The unit tests in test_sbom_and_oci.py exercise the writer with synthetic
+    contexts; this is the regression baseline for the full pipeline against a
+    real staged root filesystem (the binary plus its resolved shared libraries).
     """
-    from dockerize.oci_output import OciOutputError
 
-    docker = shutil.which("docker")
-    if docker is None:
-        pytest.skip("docker not on PATH")
-    if subprocess.run([docker, "buildx", "version"], capture_output=True).returncode != 0:
-        pytest.skip("docker buildx not available")
+    def _member_bytes(tf: tarfile.TarFile, name: str) -> bytes:
+        member = tf.extractfile(name)
+        assert member is not None, f"{name} missing from archive"
+        return member.read()
 
     ctx = tmp_path / "ctx"
     archive = tmp_path / "image.oci.tar"
@@ -116,35 +113,39 @@ def test_output_oci_runs_buildx_path(tmp_path: Path) -> None:
         output_oci=archive,
     )
     app.add_file("/bin/ls")
-
-    try:
-        app.build()
-    except OciOutputError as err:
-        # Stock daemon without the containerd image store: the failure must be
-        # actionable, naming the way out — not a bare CalledProcessError.
-        message = str(err)
-        assert "containerd image store" in message
-        assert "docker-container" in message
-        return
-
-    # Daemon can export OCI: the archive must be a real OCI image layout, i.e.
-    # an oci-layout marker plus an index.json whose first manifest digest
-    # resolves to a blob present in the archive.
-    import tarfile
+    app.build()
 
     assert archive.exists() and archive.stat().st_size > 0
     with tarfile.open(archive) as tf:
         names = set(tf.getnames())
         assert "oci-layout" in names
         assert "index.json" in names
-        index_member = tf.extractfile("index.json")
-        assert index_member is not None
-        index = json.loads(index_member.read())
 
-    manifests = index["manifests"]
-    assert manifests, "OCI index declares no manifests"
-    algo, _, hexdigest = manifests[0]["digest"].partition(":")
-    assert f"blobs/{algo}/{hexdigest}" in names, "manifest blob missing from archive"
+        index = json.loads(_member_bytes(tf, "index.json"))
+        manifests = index["manifests"]
+        assert manifests, "OCI index declares no manifests"
+        algo, _, hexd = manifests[0]["digest"].partition(":")
+        assert f"blobs/{algo}/{hexd}" in names, "manifest blob missing from archive"
+
+        manifest = json.loads(_member_bytes(tf, f"blobs/{algo}/{hexd}"))
+        config_algo, _, config_hex = manifest["config"]["digest"].partition(":")
+        layer_algo, _, layer_hex = manifest["layers"][0]["digest"].partition(":")
+        assert f"blobs/{config_algo}/{config_hex}" in names, "config blob missing"
+        assert f"blobs/{layer_algo}/{layer_hex}" in names, "layer blob missing"
+        config = json.loads(_member_bytes(tf, f"blobs/{config_algo}/{config_hex}"))
+        layer_gz = _member_bytes(tf, f"blobs/{layer_algo}/{layer_hex}")
+
+    # diffID integrity: the config's rootfs digest is the sha256 of the
+    # uncompressed layer tar.
+    raw = gzip.decompress(layer_gz)
+    assert config["rootfs"]["diff_ids"] == ["sha256:" + hashlib.sha256(raw).hexdigest()]
+
+    # The real binary landed in the layer; the generated Dockerfile did not.
+    with tarfile.open(fileobj=io.BytesIO(raw)) as layer:
+        layer_names = set(layer.getnames())
+    assert "bin/ls" in layer_names
+    assert "Dockerfile" not in layer_names
+    assert config["config"]["Entrypoint"] == ["/bin/ls"]
 
 
 @integration_only
