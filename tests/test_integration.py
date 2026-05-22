@@ -85,6 +85,56 @@ def test_build_with_compress_actually_compresses(tmp_path: Path) -> None:
 
 @integration_only
 @linux_only
+def test_output_oci_produces_valid_archive(tmp_path: Path) -> None:
+    """End-to-end: --output-oci builds a real OCI archive via docker buildx.
+
+    The unit tests in test_sbom_and_oci.py mock subprocess, so this is the
+    only place the daemon-backed buildx OCI path actually runs. buildx's
+    default ``docker`` driver delegates the build to the daemon, so this
+    requires a running Docker daemon — which is exactly the property the
+    mocked tests cannot assert.
+    """
+    docker = shutil.which("docker")
+    if docker is None:
+        pytest.skip("docker not on PATH")
+    if subprocess.run([docker, "buildx", "version"], capture_output=True).returncode != 0:
+        pytest.skip("docker buildx not available")
+
+    ctx = tmp_path / "ctx"
+    archive = tmp_path / "image.oci.tar"
+    app = Dockerize(
+        targetdir=str(ctx),
+        tag="dockerize2-test-oci:integration",
+        entrypoint="/bin/ls",
+        symlinks=SymlinkOptions.COPY_ALL,
+        output_oci=archive,
+    )
+    app.add_file("/bin/ls")
+    app.build()
+
+    assert archive.exists() and archive.stat().st_size > 0
+
+    # Validate it is a real OCI image layout, not merely a tar: the archive
+    # must carry the oci-layout marker plus an index.json whose first
+    # manifest resolves to a blob actually present in the archive.
+    import tarfile
+
+    with tarfile.open(archive) as tf:
+        names = set(tf.getnames())
+        assert "oci-layout" in names
+        assert "index.json" in names
+        index_member = tf.extractfile("index.json")
+        assert index_member is not None
+        index = json.loads(index_member.read())
+
+    manifests = index["manifests"]
+    assert manifests, "OCI index declares no manifests"
+    algo, _, hexdigest = manifests[0]["digest"].partition(":")
+    assert f"blobs/{algo}/{hexdigest}" in names, "manifest blob missing from archive"
+
+
+@integration_only
+@linux_only
 def test_build_with_sbom_writes_spdx(tmp_path: Path) -> None:
     """End-to-end: --sbom should produce a parseable SPDX JSON file."""
     if shutil.which("syft") is None:
