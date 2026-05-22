@@ -86,7 +86,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 ARG UPX_VERSION=5.1.1
 ARG BUILDX_VERSION=v0.34.1
-ARG DOCKER_VERSION=29.4.3
+ARG DOCKER_VERSION=29.5.2
 
 # The pinned base image lags Debian's security archive: it ships libgnutls30
 # 3.7.9-2+deb12u6 while deb12u7 (fixing the GnuTLS CVE batch — CVE-2026-33845,
