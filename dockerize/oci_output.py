@@ -30,6 +30,24 @@ class OciOutputError(FileNotFoundError):
     """Raised when no engine capable of producing an OCI archive is available."""
 
 
+def _run_checked(argv: list[str], *, while_doing: str) -> None:
+    """Run ``argv`` via ``check_call``; on failure raise :class:`OciOutputError`.
+
+    Replaces a bare ``CalledProcessError`` with a message that names the tool,
+    the exit code, and the full command, so the caller sees what failed rather
+    than an opaque ``returned non-zero exit status``. The command's own output
+    still streams to stderr.
+    """
+    try:
+        subprocess.check_call(argv)
+    except subprocess.CalledProcessError as err:
+        tool = Path(argv[0]).name
+        raise OciOutputError(
+            f"{tool} failed (exit {err.returncode}) while {while_doing}. "
+            f"Command: {' '.join(argv)}. See {tool}'s output above for the cause."
+        ) from err
+
+
 def _has_buildx(docker: str) -> bool:
     try:
         subprocess.check_call(
@@ -90,9 +108,13 @@ def build_oci_archive(
     if podman is not None:
         local_tag = tag or "dockerize2-oci-tmp:latest"
         LOG.info("building image with podman, then exporting OCI archive")
-        subprocess.check_call([podman, "build", "-t", local_tag, str(context_dir)])
-        subprocess.check_call(
-            [podman, "save", "--format", "oci-archive", "-o", str(output_path), local_tag]
+        _run_checked(
+            [podman, "build", "-t", local_tag, str(context_dir)],
+            while_doing="building the image",
+        )
+        _run_checked(
+            [podman, "save", "--format", "oci-archive", "-o", str(output_path), local_tag],
+            while_doing="exporting the OCI archive",
         )
         return output_path
 
