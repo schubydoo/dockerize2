@@ -64,6 +64,13 @@ RUN set -eux; \
 # Stage 4: runtime.
 #
 # Tools installed from upstream releases rather than Debian apt:
+#   - docker (CLI)  : --runtime docker. We install ONLY the static client from
+#                     download.docker.com, not the `docker.io` apt package.
+#                     dockerize talks to the *host's* daemon over the mounted
+#                     socket, so the in-container dockerd/containerd/runc that
+#                     `docker.io` bundles are never run — ~170 MB of dead
+#                     weight. The static client is also far newer than
+#                     bookworm's docker.io (20.10.x).
 #   - upx           : --compress (Debian's upx-ucl trails upstream + non-free
 #                     status varies across mirrors)
 #   - docker-buildx : --output-oci (not packaged in bookworm main)
@@ -79,24 +86,28 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 ARG UPX_VERSION=5.1.1
 ARG BUILDX_VERSION=v0.34.1
+ARG DOCKER_VERSION=29.4.3
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y \
-      docker.io \
       curl \
       xz-utils \
       ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Architecture-aware install of upx and docker-buildx.
+# Architecture-aware install of the docker CLI, upx, and docker-buildx.
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
-      x86_64)   upx_arch=amd64_linux;  bx_arch=linux-amd64 ;; \
-      aarch64)  upx_arch=arm64_linux;  bx_arch=linux-arm64 ;; \
-      armv7l)   upx_arch=arm_linux;    bx_arch=linux-arm-v7 ;; \
+      x86_64)   upx_arch=amd64_linux;  bx_arch=linux-amd64;   docker_arch=x86_64 ;; \
+      aarch64)  upx_arch=arm64_linux;  bx_arch=linux-arm64;   docker_arch=aarch64 ;; \
+      armv7l)   upx_arch=arm_linux;    bx_arch=linux-arm-v7;  docker_arch=armhf ;; \
       *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${docker_arch}/docker-${DOCKER_VERSION}.tgz" \
+      | tar -xz -C /tmp docker/docker; \
+    install -m 0755 /tmp/docker/docker /usr/local/bin/docker; \
+    rm -rf /tmp/docker; \
     curl -fsSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-${upx_arch}.tar.xz" \
       | tar -xJ -C /tmp; \
     install -m 0755 "/tmp/upx-${UPX_VERSION}-${upx_arch}/upx" /usr/local/bin/upx; \
@@ -105,6 +116,7 @@ RUN set -eux; \
     curl -fsSL -o /root/.docker/cli-plugins/docker-buildx \
       "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.${bx_arch}"; \
     chmod +x /root/.docker/cli-plugins/docker-buildx; \
+    docker --version; \
     upx --version; \
     docker buildx version
 

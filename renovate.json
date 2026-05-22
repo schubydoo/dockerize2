@@ -45,6 +45,15 @@
       "matchStrings": ["ARG SYFT_VERSION=(?<currentValue>\\S+)"],
       "depNameTemplate": "anchore/syft",
       "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "docker/cli (static client) version (github-releases).",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": ["ARG DOCKER_VERSION=(?<currentValue>\\S+)"],
+      "depNameTemplate": "docker/cli",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v?(?<version>.+)$"
     }
   ],
   "packageRules": [
