@@ -7,10 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.3](https://github.com/schubydoo/dockerize2/compare/v0.3.2...v0.3.3) (2026-05-22)
 
+Rolls up the security, container, and documentation hardening since v0.3.2.
+This is also the first release published to **production PyPI**.
+
+### Security
+
+* Pull the security-patched `libgnutls30` (`3.7.9-2+deb12u7`) over the pinned
+  base image, resolving a batch of GnuTLS CVEs (2 critical, 3 high, 7 medium)
+  that the upstream base image had not yet picked up.
+
+### Changed
+
+* The runtime container image is ~39% smaller (**~754 MB → ~460 MB**): the
+  full `docker.io` engine is replaced with the static Docker CLI — dropping
+  the unused `dockerd`/`containerd`/`runc` and upgrading the client from
+  20.10 to 29.x.
+* `--output-oci` now raises an actionable error when the buildx driver cannot
+  export an OCI archive (pointing to the containerd image store, a
+  `docker-container` builder, or `--runtime podman`) instead of failing
+  opaquely.
 
 ### Bug Fixes
 
 * add tool and command context to subprocess failures ([#82](https://github.com/schubydoo/dockerize2/issues/82)) ([f3a9566](https://github.com/schubydoo/dockerize2/commit/f3a9566cf241f837c9f0b8b142afed58985e92bc))
+
+### Documentation
+
+* Refreshed `examples/` for the current CLI and added `jq`, `curl`, `ffmpeg`,
+  `sqlite3`, and static-Go examples; replaced the defunct `thttpd` example
+  with `mini-httpd`. Corrected the `--output-oci` daemon/socket documentation.
+
+### Continuous Integration
+
+* Pull requests now build the Dockerfile and Trivy-scan the resulting image.
+* Releases publish to production PyPI via Trusted Publishing (OIDC), gated by
+  a `pypi` environment that restricts deployment to `v*` tags and requires
+  maintainer approval.
 
 ## [Unreleased]
 
