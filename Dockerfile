@@ -88,11 +88,19 @@ ARG UPX_VERSION=5.1.1
 ARG BUILDX_VERSION=v0.34.1
 ARG DOCKER_VERSION=29.4.3
 
+# The pinned base image lags Debian's security archive: it ships libgnutls30
+# 3.7.9-2+deb12u6 while deb12u7 (fixing the GnuTLS CVE batch — CVE-2026-33845,
+# CVE-2026-42010, and others) is already published. Pull the patched package on
+# top of the pinned base. `--only-upgrade` (no exact version pin) always moves
+# forward, so it becomes a harmless no-op once the base image itself catches up
+# — unlike a pinned `=deb12u7`, which would fail the build by implying a
+# downgrade. Drop this once the base no longer lags.
 RUN apt-get update \
  && apt-get install --no-install-recommends -y \
       curl \
       xz-utils \
       ca-certificates \
+ && apt-get install --no-install-recommends -y --only-upgrade libgnutls30 \
  && rm -rf /var/lib/apt/lists/*
 
 # Architecture-aware install of the docker CLI, upx, and docker-buildx.
