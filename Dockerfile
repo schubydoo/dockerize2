@@ -73,9 +73,10 @@ RUN set -eux; \
 #                     bookworm's docker.io (20.10.x).
 #   - upx           : --compress (Debian's upx-ucl trails upstream + non-free
 #                     status varies across mirrors)
-#   - docker-buildx : --output-oci (not packaged in bookworm main)
 #   - syft          : --sbom (cross-compiled from source in the syft-builder
 #                     stage above; anchore doesn't ship linux/armv7 binaries)
+# --output-oci needs no tooling: dockerize assembles the OCI archive in pure
+# Python, so the docker-buildx plugin is no longer bundled.
 # -----------------------------------------------------------------------------
 FROM python:3.14-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb
 
@@ -85,7 +86,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive
 
 ARG UPX_VERSION=5.1.1
-ARG BUILDX_VERSION=v0.34.1
 ARG DOCKER_VERSION=29.5.2
 
 # The pinned base image lags Debian's security archive: it ships libgnutls30
@@ -103,13 +103,13 @@ RUN apt-get update \
  && apt-get install --no-install-recommends -y --only-upgrade libgnutls30 \
  && rm -rf /var/lib/apt/lists/*
 
-# Architecture-aware install of the docker CLI, upx, and docker-buildx.
+# Architecture-aware install of the docker CLI and upx.
 RUN set -eux; \
     arch="$(uname -m)"; \
     case "$arch" in \
-      x86_64)   upx_arch=amd64_linux;  bx_arch=linux-amd64;   docker_arch=x86_64 ;; \
-      aarch64)  upx_arch=arm64_linux;  bx_arch=linux-arm64;   docker_arch=aarch64 ;; \
-      armv7l)   upx_arch=arm_linux;    bx_arch=linux-arm-v7;  docker_arch=armhf ;; \
+      x86_64)   upx_arch=amd64_linux;  docker_arch=x86_64 ;; \
+      aarch64)  upx_arch=arm64_linux;  docker_arch=aarch64 ;; \
+      armv7l)   upx_arch=arm_linux;    docker_arch=armhf ;; \
       *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     curl -fsSL "https://download.docker.com/linux/static/stable/${docker_arch}/docker-${DOCKER_VERSION}.tgz" \
@@ -120,13 +120,8 @@ RUN set -eux; \
       | tar -xJ -C /tmp; \
     install -m 0755 "/tmp/upx-${UPX_VERSION}-${upx_arch}/upx" /usr/local/bin/upx; \
     rm -rf "/tmp/upx-${UPX_VERSION}-${upx_arch}"; \
-    mkdir -p /root/.docker/cli-plugins; \
-    curl -fsSL -o /root/.docker/cli-plugins/docker-buildx \
-      "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.${bx_arch}"; \
-    chmod +x /root/.docker/cli-plugins/docker-buildx; \
     docker --version; \
-    upx --version; \
-    docker buildx version
+    upx --version
 
 # Syft cross-compiled from source in the syft-builder stage above.
 COPY --from=syft-builder /out/syft /usr/local/bin/syft
@@ -151,9 +146,8 @@ WORKDIR /work
 # No USER directive: the container runs as root by design.
 #   - `--runtime docker` (default) needs the host's Docker socket mounted at
 #     /var/run/docker.sock, which is typically root-owned on the host.
-#   - The Docker CLI's buildx plugin is installed under /root/.docker/cli-plugins.
 # Users who don't need the daemon path should prefer `--output-oci PATH`, which
-# emits an OCI archive without touching the socket and can be combined with
-# `docker run --user $(id -u):$(id -g)` to drop privileges.
+# now assembles the OCI archive in pure Python — no socket, no buildx — and can
+# be combined with `docker run --user $(id -u):$(id -g)` to drop privileges.
 ENTRYPOINT ["dockerize"]
 CMD ["--help"]

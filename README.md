@@ -38,21 +38,17 @@ A pre-built multi-arch image is available at
 - `linux/arm64`
 - `linux/arm/v7` (32-bit hardware-float ABI — Raspberry Pi 32-bit, etc.)
 
-OCI-archive output — produces a portable OCI tarball instead of loading the
-image into a local store. The difference from classic mode is the
+OCI-archive output — produces a portable OCI image-layout tarball instead of
+loading the image into a local store. The difference from classic mode is the
 self-contained `.oci.tar` (plus a matching SBOM) that you load yourself.
 
-Caveat: `docker buildx`'s default `docker` driver can only export an OCI
-archive when the daemon has the **containerd image store** enabled (the
-default on Docker Desktop, but not on a stock Linux `docker-ce`). On a daemon
-without it the build fails with "OCI exporter is not supported for the docker
-driver"; create a container-based builder first
-(`docker buildx create --use --driver docker-container`). The only fully
-daemonless path is `--runtime podman`, which is not bundled in this image.
+`--output-oci` is fully daemonless: dockerize assembles the single-layer OCI
+image in pure Python — no Docker socket, no `buildx`, no `podman`. Load the
+resulting archive with `skopeo`, `oras`, `podman load`, or `docker load` (the
+last needs the containerd image store enabled).
 
 ```bash
 docker run --rm \
-  -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD":/work \
   -v /usr/sbin/mini_httpd:/usr/sbin/mini_httpd:ro \
   ghcr.io/schubydoo/dockerize2:latest \
@@ -150,11 +146,12 @@ docker run --rm ghcr.io/schubydoo/dockerize2:latest doctor
                             syft).
       --sbom-format {spdx-json,cyclonedx-json,syft-json}
                             SBOM format (default: spdx-json).
-      --output-oci PATH     Emit an OCI image archive to PATH instead of pushing
-                            into a daemon. Uses `docker buildx` if available;
-                            falls back to `podman save --format oci-archive`.
-                            Removes the need for /var/run/docker.sock when running
-                            dockerize from a container.
+      --output-oci PATH     Write the image to PATH as an OCI image-layout
+                            archive instead of building it through a container
+                            engine. Assembled in pure Python — no daemon, no
+                            buildx, no socket. Load the archive with skopeo,
+                            oras, podman load, or docker load (the last needs
+                            the containerd image store).
 
     Logging options:
       --verbose

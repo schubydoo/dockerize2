@@ -32,14 +32,6 @@
     },
     {
       "customType": "regex",
-      "description": "docker/buildx version (github-releases).",
-      "managerFilePatterns": ["/^Dockerfile$/"],
-      "matchStrings": ["ARG BUILDX_VERSION=(?<currentValue>\\S+)"],
-      "depNameTemplate": "docker/buildx",
-      "datasourceTemplate": "github-releases"
-    },
-    {
-      "customType": "regex",
       "description": "anchore/syft version (github-releases).",
       "managerFilePatterns": ["/^Dockerfile$/"],
       "matchStrings": ["ARG SYFT_VERSION=(?<currentValue>\\S+)"],

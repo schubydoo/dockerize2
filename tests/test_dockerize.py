@@ -372,28 +372,35 @@ def test_generate_sbom_delegates_to_sbom_module(tmp_path: Path) -> None:
 
 
 def test_build_image_routes_to_oci_when_output_oci_set(tmp_path: Path) -> None:
-    """build_image() short-circuits to build_oci_archive when output_oci is set."""
+    """build_image() short-circuits to the native build_oci_archive when
+    output_oci is set, passing decoded entrypoint/cmd and the image labels
+    (and no longer a runtime — the writer needs no engine)."""
     from dockerize import dockerize as dockerize_mod
 
     oci_path = tmp_path / "img.oci.tar"
     app = Dockerize(
         targetdir=str(tmp_path),
         tag="img:1",
+        entrypoint="/bin/ls",
+        cmd="-l",
         output_oci=oci_path,
-        runtime="podman",
     )
     with (
         patch.object(dockerize_mod, "build_oci_archive") as build_oci,
         patch("subprocess.check_call") as run,
     ):
         app.build_image()
-    build_oci.assert_called_once_with(
-        Path(str(tmp_path)),
-        oci_path,
-        tag="img:1",
-        runtime="podman",
-    )
+
     run.assert_not_called()
+    build_oci.assert_called_once()
+    args, kwargs = build_oci.call_args.args, build_oci.call_args.kwargs
+    assert args[0] == Path(str(tmp_path))
+    assert args[1] == oci_path
+    assert kwargs["tag"] == "img:1"
+    assert kwargs["entrypoint"] == ["/bin/ls"]
+    assert kwargs["cmd"] == ["-l"]
+    assert kwargs["labels"]["org.opencontainers.image.title"] == "img:1"
+    assert "runtime" not in kwargs
 
 
 def test_build_image_takes_classic_path_when_oci_unset(tmp_path: Path) -> None:
