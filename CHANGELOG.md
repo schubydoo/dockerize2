@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/schubydoo/dockerize2/compare/v0.3.3...v0.4.0) (2026-05-22)
+
+
+### Features
+
+* assemble --output-oci archives natively, drop the buildx dependency ([#87](https://github.com/schubydoo/dockerize2/issues/87)) ([ed91273](https://github.com/schubydoo/dockerize2/commit/ed9127302024193864abb4f15cf5223e4b5657bc))
+
 ## [0.3.3](https://github.com/schubydoo/dockerize2/compare/v0.3.2...v0.3.3) (2026-05-22)
 
 Rolls up the security, container, automation, and documentation hardening
