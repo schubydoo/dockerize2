@@ -41,74 +41,62 @@ jobs:
 
   image:
     name: image scan
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       contents: read
       packages: read
     steps:
-      # Report-only: the runtime image bundles third-party binaries (docker
-      # CLI, buildx, syft) whose CVEs we usually can't action directly, and
-      # trivy's secret scanner is prone to false positives on packed binaries.
-      # Hard-gating here blocks master on findings we can't fix, so the image
-      # scan uploads to the Security tab for triage instead of failing CI.
-      # (The filesystem scan, covering our own deps, IS gated — see above.)
-      - name: Trivy image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/dockerize2:latest
-          format: sarif
-          output: trivy-image.sarif
-          severity: CRITICAL,HIGH,MEDIUM
-          ignore-unfixed: true
-      - name: Upload SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
-        with:
-          sarif_file: trivy-image.sarif
-          category: trivy-image
-
-  image-pr:
-    name: image scan (PR build)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      contents: read
-    steps:
-      # On master/cron the `image` job re-scans the published :latest, which
-      # cannot reflect a Dockerfile change in an open PR. This job builds the
-      # PR's own Dockerfile and scans THAT image, so a PR that introduces a
-      # vulnerable package (or breaks the build outright) is caught here.
+      # One job for both events so the code-scanning analysis key
+      # (workflow + job + category) is identical on master and on PRs.
+      # A separate PR-only job uploading the same `trivy-image` category was
+      # not enough: GitHub keys configurations by analysis key, not category
+      # alone, so the master `trivy-image` config showed as "not found" on
+      # PRs ("cannot determine the alerts introduced by this pull request").
       #
-      # The build step IS gating: a Dockerfile that fails to build fails the
-      # job. The Trivy scan is report-only for the same reason as the `image`
-      # job above (bundled third-party binaries → un-actionable CVEs); it
-      # uploads under the shared `trivy-image` category so code scanning can
-      # diff PR findings against the master baseline.
+      # On a PR we build the PR's own Dockerfile (amd64, --load) and scan THAT
+      # image, so a PR that introduces a vulnerable package — or breaks the
+      # build outright — is caught here (the build step gates). On push/cron
+      # we scan the published :latest. Single-platform because buildx cannot
+      # --load a multi-arch manifest; cross-arch build breakage is still
+      # caught at release time by release.yml's multi-arch build.
       #
-      # Single-platform (amd64) so the image can be --loaded for scanning;
-      # buildx cannot --load a multi-arch manifest. Cross-arch build breakage
-      # is still caught at release time by release.yml's multi-arch build.
+      # The Trivy scan is report-only: the runtime image bundles third-party
+      # binaries (docker CLI, buildx, syft) whose CVEs we usually can't action
+      # directly. It uploads to the Security tab for triage. (The filesystem
+      # scan, covering our own deps, IS gated — see above.)
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - name: Set up Buildx
+        if: github.event_name == 'pull_request'
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
       - name: Build PR image (load to runner)
+        if: github.event_name == 'pull_request'
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
           platforms: linux/amd64
           load: true
-          tags: dockerize2:pr
+          tags: dockerize2:scan
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Trivy image (PR build)
+      - name: Resolve image ref
+        id: ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "ref=dockerize2:scan" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=ghcr.io/${OWNER}/dockerize2:latest" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Trivy image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: dockerize2:pr
+          image-ref: ${{ steps.ref.outputs.ref }}
           format: sarif
           output: trivy-image.sarif
           severity: CRITICAL,HIGH,MEDIUM
