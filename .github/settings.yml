@@ -46,6 +46,11 @@ branches:
           - "secret scan"
           - "filesystem scan"
           - "workflow audit"
+          # pr-title.yml runs on every `pull_request`, so requiring it does
+          # not strand PRs the way `OSSF Scorecard` would. The squash-merge
+          # title is what Release Please parses, so a clean title is a
+          # release-correctness gate, not just style.
+          - "conventional PR title"
       # `null` (not `false`) — the Probot Settings App rejects `false` here
       # silently. See repository-settings/app#923 (comment 2200600178).
       enforce_admins: null
