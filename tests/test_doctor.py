@@ -65,7 +65,8 @@ def test_overall_status_no_runtime() -> None:
         CheckResult("docker", "missing"),
         CheckResult("podman", "missing"),
         CheckResult("upx", "missing"),
-        CheckResult("syft", "missing"),    ]
+        CheckResult("syft", "missing"),
+    ]
     assert overall_status(results) == 1
 
 
@@ -75,7 +76,8 @@ def test_overall_status_ok_with_podman() -> None:
         CheckResult("docker", "missing"),
         CheckResult("podman", "ok", "/usr/bin/podman"),
         CheckResult("upx", "missing"),
-        CheckResult("syft", "missing"),    ]
+        CheckResult("syft", "missing"),
+    ]
     assert overall_status(results) == 0
 
 
@@ -96,7 +98,8 @@ def test_run_returns_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
         CheckResult("docker", "missing"),
         CheckResult("podman", "missing"),
         CheckResult("upx", "missing"),
-        CheckResult("syft", "missing"),    ]
+        CheckResult("syft", "missing"),
+    ]
     with patch.object(doctor, "collect_checks", return_value=fake):
         code = run()
     captured = capsys.readouterr()
@@ -111,7 +114,8 @@ def test_run_returns_zero_when_healthy(capsys: pytest.CaptureFixture[str]) -> No
         CheckResult("docker", "ok", "/usr/bin/docker"),
         CheckResult("podman", "missing"),
         CheckResult("upx", "ok"),
-        CheckResult("syft", "ok"),    ]
+        CheckResult("syft", "ok"),
+    ]
     with patch.object(doctor, "collect_checks", return_value=fake):
         code = run()
     captured = capsys.readouterr()
