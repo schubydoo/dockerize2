@@ -13,12 +13,16 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  testpypi:
-    name: TestPyPI publish
+  pypi:
+    name: PyPI publish
     runs-on: ubuntu-latest
+    # The `pypi` environment gates this job: deployments are restricted to
+    # `v*` tags and require a maintainer's manual approval before the publish
+    # runs. PyPI Trusted Publishing (OIDC) is configured for this repo +
+    # workflow + environment, so no API token is needed.
     environment:
-      name: testpypi
-      url: https://test.pypi.org/p/dockerize2
+      name: pypi
+      url: https://pypi.org/p/dockerize2
     permissions:
       contents: read
       id-token: write
@@ -41,10 +45,11 @@ jobs:
           path: dist/
           retention-days: 7
           if-no-files-found: error
-      - name: Publish to TestPyPI (Trusted Publishing)
+      - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
-          repository-url: https://test.pypi.org/legacy/
+          # No repository-url override: defaults to the real PyPI
+          # (https://upload.pypi.org/legacy/).
           # Tolerate the case where this same version was already uploaded
           # by an earlier (possibly partial-failure) workflow run, so we can
           # re-trigger the release after fixing a downstream job without
@@ -125,7 +130,7 @@ jobs:
 
   github-release:
     name: GitHub Release
-    needs: [testpypi, image]
+    needs: [pypi, image]
     runs-on: ubuntu-latest
     permissions:
       contents: write
