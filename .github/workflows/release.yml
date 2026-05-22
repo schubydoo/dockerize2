@@ -129,6 +129,42 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Slim image metadata
+        id: meta-slim
+        # `:slim` is the minimal (pure-Python) variant: base + dockerize2, no
+        # docker CLI / syft / upx. suffix=-slim on the versioned tags; a plain
+        # `:slim` moving tag (suffix override) replaces `:latest` for this
+        # variant (latest=false so we don't also publish `:latest`).
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
+            suffix=-slim
+          tags: |
+            type=semver,pattern={{version}},value=${{ inputs.tag || github.ref_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref_name }}
+            type=raw,value=slim,suffix=
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push (slim)
+        id: build-slim
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          target: slim
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ steps.meta-slim.outputs.tags }}
+          labels: ${{ steps.meta-slim.outputs.labels }}
+          annotations: ${{ steps.meta-slim.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
@@ -136,6 +172,17 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           TAGS: ${{ steps.meta.outputs.tags }}
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          for tag in $TAGS; do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+      - name: Sign slim image (keyless)
+        env:
+          DIGEST: ${{ steps.build-slim.outputs.digest }}
+          TAGS: ${{ steps.meta-slim.outputs.tags }}
           COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail

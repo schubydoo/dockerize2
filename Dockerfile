@@ -61,40 +61,16 @@ RUN set -eux; \
     find /go/bin -type f -name syft -exec install -m 0755 {} /out/syft \;
 
 # -----------------------------------------------------------------------------
-# Stage 4: runtime.
+# Stage 4a: `slim` runtime — pure-Python dockerize2 only.
 #
-# Tools installed from upstream releases rather than Debian apt:
-#   - docker (CLI)  : --runtime docker. We install ONLY the static client from
-#                     download.docker.com, not the `docker.io` apt package.
-#                     dockerize talks to the *host's* daemon over the mounted
-#                     socket, so the in-container dockerd/containerd/runc that
-#                     `docker.io` bundles are never run — ~170 MB of dead
-#                     weight. The static client is also far newer than
-#                     bookworm's docker.io (20.10.x).
-#   - upx           : --compress (Debian's upx-ucl trails upstream + non-free
-#                     status varies across mirrors)
-#   - syft          : --sbom (cross-compiled from source in the syft-builder
-#                     stage above; anchore doesn't ship linux/armv7 binaries)
-# --output-oci needs no tooling: dockerize assembles the OCI archive in pure
-# Python, so the docker-buildx plugin is no longer bundled.
-# -----------------------------------------------------------------------------
-FROM python:3.14-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    DEBIAN_FRONTEND=noninteractive
-
-ARG UPX_VERSION=5.1.1
-ARG DOCKER_VERSION=29.5.2
-
-# Everything apt + tarball tooling in ONE layer, so build-only packages never
-# persist in the image. curl/xz-utils/ca-certificates are installed, used to
-# fetch the docker CLI + upx, then purged *within this same layer* — a purge in
-# a later layer cannot reclaim an earlier layer's bytes (which is why these used
-# to leak ~12 MB into the published image). ca-certificates is kept (curl needs
-# the trust store; harmless at runtime). The libgnutls30 upgrade IS a real
-# runtime change and intentionally stays.
+# Just the base, the libgnutls security patch, and the dockerize2 wheel + its
+# Python deps. No docker CLI, no syft, no upx — so this tag does NOT support
+# `--runtime docker`, `--sbom`, or `--compress`. It DOES support the fully
+# daemonless paths:
+#   - `dockerize -n -o DIR <bin>`   → stage a binary + its libs for a later
+#     multi-stage `FROM scratch; COPY --from=stage DIR/ /` build;
+#   - `dockerize --output-oci PATH` → write a portable OCI image archive.
+# Published as `:slim` and `:X.Y[.Z]-slim`.
 #
 # Why the libgnutls upgrade: the pinned base lags Debian's security archive (it
 # ships 3.7.9-2+deb12u6; deb12u7 fixes the GnuTLS CVE batch — CVE-2026-33845,
@@ -102,10 +78,67 @@ ARG DOCKER_VERSION=29.5.2
 # forward, so it is a harmless no-op once the base catches up — unlike a pinned
 # `=deb12u7`, which would fail the build by implying a downgrade. Drop it once
 # the base no longer lags.
+# -----------------------------------------------------------------------------
+FROM python:3.14-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb AS slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install --no-install-recommends -y --only-upgrade libgnutls30; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/dist/*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
+
+LABEL org.opencontainers.image.source="https://github.com/schubydoo/dockerize2" \
+      org.opencontainers.image.title="dockerize2" \
+      org.opencontainers.image.description="Pack a dynamically linked ELF binary and its deps into a minimal scratch image." \
+      org.opencontainers.image.licenses="GPL-3.0-or-later" \
+      org.opencontainers.image.documentation="https://github.com/schubydoo/dockerize2#readme"
+
+WORKDIR /work
+
+# No USER directive: the container runs as root by design. The daemonless paths
+# (`-n -o DIR`, `--output-oci`) need no socket; combine with
+# `docker run --user $(id -u):$(id -g)` to drop privileges.
+ENTRYPOINT ["dockerize"]
+CMD ["--help"]
+
+# -----------------------------------------------------------------------------
+# Stage 4b: `full` runtime (DEFAULT — published as `:latest` + semver tags).
+#
+# slim + the optional-feature tooling, installed from upstream releases rather
+# than Debian apt:
+#   - docker (CLI)  : --runtime docker. ONLY the static client from
+#                     download.docker.com, not the `docker.io` apt package —
+#                     dockerize talks to the *host's* daemon over the mounted
+#                     socket, so the bundled dockerd/containerd/runc would be
+#                     ~170 MB of dead weight. Also far newer than bookworm's
+#                     docker.io (20.10.x).
+#   - upx           : --compress (Debian's upx-ucl trails upstream + non-free
+#                     status varies across mirrors).
+#   - syft          : --sbom (cross-compiled in the syft-builder stage above;
+#                     anchore ships no linux/armv7 binary).
+# `--output-oci` needs none of these. As the LAST stage, a target-less build
+# produces this image.
+#
+# curl/xz-utils/ca-certificates are build-only: installed, used to fetch the
+# docker CLI + upx, then purged within this single layer (a purge in a later
+# layer can't reclaim an earlier layer's bytes). ca-certificates is kept (curl's
+# trust store; harmless at runtime).
+# -----------------------------------------------------------------------------
+FROM slim AS full
+
+ARG UPX_VERSION=5.1.1
+ARG DOCKER_VERSION=29.5.2
+
 RUN set -eux; \
     apt-get update; \
     apt-get install --no-install-recommends -y curl xz-utils ca-certificates; \
-    apt-get install --no-install-recommends -y --only-upgrade libgnutls30; \
     arch="$(uname -m)"; \
     case "$arch" in \
       x86_64)   upx_arch=amd64_linux;  docker_arch=x86_64 ;; \
@@ -130,23 +163,3 @@ RUN set -eux; \
 # Syft cross-compiled from source in the syft-builder stage above.
 COPY --from=syft-builder /out/syft /usr/local/bin/syft
 RUN syft version
-
-COPY --from=builder /src/dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
-
-LABEL org.opencontainers.image.source="https://github.com/schubydoo/dockerize2" \
-      org.opencontainers.image.title="dockerize2" \
-      org.opencontainers.image.description="Pack a dynamically linked ELF binary and its deps into a minimal scratch image." \
-      org.opencontainers.image.licenses="GPL-3.0-or-later" \
-      org.opencontainers.image.documentation="https://github.com/schubydoo/dockerize2#readme"
-
-WORKDIR /work
-
-# No USER directive: the container runs as root by design.
-#   - `--runtime docker` (default) needs the host's Docker socket mounted at
-#     /var/run/docker.sock, which is typically root-owned on the host.
-# Users who don't need the daemon path should prefer `--output-oci PATH`, which
-# now assembles the OCI archive in pure Python — no socket, no buildx — and can
-# be combined with `docker run --user $(id -u):$(id -g)` to drop privileges.
-ENTRYPOINT ["dockerize"]
-CMD ["--help"]

@@ -31,12 +31,46 @@ scripts continue to work unchanged.
 ## Run from a container
 
 A pre-built multi-arch image is available at
-`ghcr.io/schubydoo/dockerize2`. Tags follow `:latest`, `:0.3`, `:0.3.0`,
-`:sha-<short>`. Supported architectures:
+`ghcr.io/schubydoo/dockerize2`. Supported architectures:
 
 - `linux/amd64`
 - `linux/arm64`
 - `linux/arm/v7` (32-bit hardware-float ABI — Raspberry Pi 32-bit, etc.)
+
+### Image variants
+
+Two flavours are published:
+
+| Tags | Contents | Use for |
+|------|----------|---------|
+| `:latest`, `:X.Y`, `:X.Y.Z`, `:sha-<short>` | dockerize2 **+ docker CLI + syft + upx** | the full CLI: `--runtime docker`, `--sbom`, `--compress`, `--output-oci`, staging |
+| `:slim`, `:X.Y-slim`, `:X.Y.Z-slim`, `:sha-<short>-slim` | dockerize2 only (pure Python) | daemonless `--output-oci` and `-n -o` staging in multi-stage builds; smallest footprint |
+
+`:slim` drops the docker CLI, syft, and upx, so `--runtime docker`, `--sbom`,
+and `--compress` are unavailable there — but the fully daemonless paths still
+work: `--output-oci PATH` and the `-n -o DIR` staging pattern below.
+
+#### Stage a binary in a multi-stage build (`:slim`)
+
+Use dockerize2 as a build stage to copy a binary and its shared libraries into a
+directory, then assemble a `FROM scratch` final image from it:
+
+```dockerfile
+FROM ghcr.io/schubydoo/dockerize2:slim AS stage
+RUN apt-get update && apt-get install -y --no-install-recommends jq
+# -n = no build, -o = output dir: stage jq + its libs into /out
+RUN dockerize -n -o /out "$(command -v jq)" \
+ && rm -f /out/Dockerfile          # generated build artifact, not part of the image
+
+FROM scratch
+COPY --from=stage /out/ /
+ENTRYPOINT ["/usr/bin/jq"]
+```
+
+dockerize2 resolves **glibc** binaries (it runs on Debian), which suits typical
+dynamically-linked Linux executables; it is not the right tool for musl/Alpine
+binaries. The `rm -f /out/Dockerfile` matters because `-n -o` writes a generated
+`Dockerfile` into the output dir that you don't want copied into the final image.
 
 OCI-archive output — produces a portable OCI image-layout tarball instead of
 loading the image into a local store. The difference from classic mode is the
