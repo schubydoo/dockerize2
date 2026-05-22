@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  # Manual fallback to (re)publish an existing tag — e.g. to recover a release
+  # whose tag was pushed by GITHUB_TOKEN and therefore didn't trigger the
+  # push-tags run. Dispatch from the default branch and pass the tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish, e.g. v0.3.3"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -30,6 +39,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
@@ -68,6 +78,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
@@ -93,10 +104,14 @@ jobs:
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Pass `value=` explicitly so the semver tags resolve whether the
+          # run was triggered by a tag push (github.ref_name) or a manual
+          # workflow_dispatch (inputs.tag); the latter runs on a branch ref
+          # from which metadata-action couldn't otherwise infer a version.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}},value=${{ inputs.tag || github.ref_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref_name }}
+            type=raw,value=latest
             type=sha,prefix=sha-,format=short
 
       - name: Build and push
@@ -138,6 +153,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
       - name: Download dist artefacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -145,7 +161,7 @@ jobs:
           path: dist/
       - name: Extract changelog section
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           version="${TAG#v}"
@@ -160,10 +176,10 @@ jobs:
             echo "::error::no CHANGELOG section found for [${version}]"
             exit 1
           fi
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -173,8 +189,16 @@ jobs:
             echo "::error::no dist artefacts to attach to the release"
             exit 1
           fi
-          gh release create "$TAG" \
-            --repo "$REPO" \
-            --title "$TAG" \
-            --notes-file release-notes.md \
-            "${files[@]}"
+          # Idempotent: if the release already exists (e.g. Release Please
+          # created it, or this is a re-publish), refresh its notes and
+          # artefacts instead of failing on a duplicate.
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$REPO" --notes-file release-notes.md
+            gh release upload "$TAG" --repo "$REPO" --clobber "${files[@]}"
+          else
+            gh release create "$TAG" \
+              --repo "$REPO" \
+              --title "$TAG" \
+              --notes-file release-notes.md \
+              "${files[@]}"
+          fi

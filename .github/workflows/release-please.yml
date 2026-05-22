@@ -25,6 +25,12 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # A user PAT (not GITHUB_TOKEN) so the release tag Release Please
+          # pushes is attributed to a real identity and therefore *triggers*
+          # release.yml (`on: push: tags`). Tags pushed by GITHUB_TOKEN do not
+          # start further workflow runs (GitHub's anti-recursion rule), which
+          # is why v0.3.3's tag never fired release.yml. Fine-grained PAT scoped
+          # to this repo with Contents:write + Pull requests:write.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
