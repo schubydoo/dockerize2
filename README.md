@@ -44,19 +44,19 @@ the Docker socket:
 ```bash
 docker run --rm \
   -v "$PWD":/work \
-  -v /usr/sbin/thttpd:/usr/sbin/thttpd:ro \
+  -v /usr/sbin/mini_httpd:/usr/sbin/mini_httpd:ro \
   ghcr.io/schubydoo/dockerize2:latest \
-    -t thttpd \
-    --output-oci /work/thttpd.oci.tar \
-    --sbom /work/thttpd.sbom.spdx.json \
+    -t httpd \
+    --output-oci /work/httpd.oci.tar \
+    --sbom /work/httpd.sbom.spdx.json \
     --compress \
-    /usr/sbin/thttpd
+    /usr/sbin/mini_httpd
 ```
 
 Then on the host:
 
 ```bash
-docker load -i thttpd.oci.tar
+docker load -i httpd.oci.tar
 ```
 
 Classic mode (mounts the daemon socket — less ideal but supported):
@@ -64,9 +64,9 @@ Classic mode (mounts the daemon socket — less ideal but supported):
 ```bash
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /usr/sbin/thttpd:/usr/sbin/thttpd:ro \
+  -v /usr/sbin/mini_httpd:/usr/sbin/mini_httpd:ro \
   ghcr.io/schubydoo/dockerize2:latest \
-    -t thttpd /usr/sbin/thttpd
+    -t httpd /usr/sbin/mini_httpd
 ```
 
 Run the health check:
@@ -163,21 +163,22 @@ Use it:
 
 ## A more complicated example
 
-Create an image named `thttpd`:
+Stage some default content, then create an image named `httpd`:
 
-    dockerize -t thttpd \
-      -a /var/www/thttpd /var/www \
-      --entrypoint '/usr/sbin/thttpd -D' \
-      --cmd '-d /var/www' \
-      /usr/sbin/thttpd
+    mkdir -p /tmp/www && echo '<h1>dockerize2</h1>' > /tmp/www/index.html
 
-Serve default content:
+    dockerize -t httpd \
+      -a /tmp/www /var/www \
+      --entrypoint '/usr/sbin/mini_httpd -D -d /var/www -p 80' \
+      /usr/sbin/mini_httpd
 
-    docker run thttpd
+Serve the baked-in content:
 
-Serve your own content:
+    docker run --rm -p 8080:80 httpd
 
-    docker run -v /my/content:/var/www thttpd
+Serve your own content instead:
+
+    docker run --rm -p 8080:80 -v /my/content:/var/www httpd
 
 ## Acknowledgements
 
