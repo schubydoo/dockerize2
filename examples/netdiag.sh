@@ -1,56 +1,24 @@
 #!/bin/sh
 
-# This builds an image containing the binaries from the iproute, iputils,
-# and net-tools packages, along with a few other useful commands.
+# Network diagnostics image: tcpdump, iproute2 (ip/ss), iputils (ping),
+# net-tools (netstat), and curl, plus a shell and the common file tools
+# (--filetools). A handy "drop in and poke the network" container.
+#
+# tcpdump drops privileges to the "tcpdump" user when run as root, so that
+# account must exist in the image (-u tcpdump).
+#
+# CMD defaults to a shell; override it to run any packed tool by full path:
+#   docker run --rm netdiag /usr/sbin/ip addr
+#   docker run --rm netdiag /usr/bin/tcpdump --version
 
-# tcpdump needs the "tcpdump" user to exist, hence
-# the '-u tcpdump'
-dockerize -t dockerizeme/netdiag \
+dockerize -t netdiag \
 	-u tcpdump \
-	-a /bin/dash /bin/sh \
 	-c /bin/sh \
 	--filetools \
-	/usr/sbin/tcpdump \
-	/usr/bin/curl \
-	/usr/sbin/arpd \
-	/usr/sbin/bridge \
-	/usr/sbin/cbq \
-	/usr/sbin/ctstat \
-	/usr/sbin/genl \
-	/usr/sbin/ifcfg \
-	/usr/sbin/ifstat \
+	/usr/bin/tcpdump \
 	/usr/sbin/ip \
-	/usr/sbin/lnstat \
-	/usr/sbin/nstat \
-	/usr/sbin/routef \
-	/usr/sbin/routel \
-	/usr/sbin/rtacct \
-	/usr/sbin/rtmon \
-	/usr/sbin/rtpr \
-	/usr/sbin/rtstat \
-	/usr/sbin/ss \
-	/usr/sbin/tc \
+	/usr/bin/ss \
 	/usr/bin/ping \
-	/usr/bin/ping6 \
-	/usr/bin/tracepath \
-	/usr/bin/tracepath6 \
-	/usr/sbin/arping \
-	/usr/sbin/clockdiff \
-	/usr/sbin/ifenslave \
-	/usr/sbin/ping6 \
-	/usr/sbin/rdisc \
-	/usr/sbin/tracepath \
-	/usr/sbin/tracepath6 \
 	/usr/bin/netstat \
-	/usr/sbin/arp \
-	/usr/sbin/ether-wake \
-	/usr/sbin/ifconfig \
-	/usr/sbin/ipmaddr \
-	/usr/sbin/iptunnel \
-	/usr/sbin/mii-diag \
-	/usr/sbin/mii-tool \
-	/usr/sbin/nameif \
-	/usr/sbin/plipconfig \
-	/usr/sbin/route \
-	/usr/sbin/slattach \
-	/usr/bin/host
+	/usr/bin/curl \
+	/bin/sh
