@@ -8,7 +8,13 @@ import subprocess
 from enum import StrEnum
 from pathlib import Path
 
-__all__ = ["SBOMFormat", "SyftNotFoundError", "find_syft", "generate_sbom"]
+__all__ = [
+    "SBOMFormat",
+    "SbomGenerationError",
+    "SyftNotFoundError",
+    "find_syft",
+    "generate_sbom",
+]
 
 LOG = logging.getLogger(__name__)
 
@@ -21,6 +27,10 @@ class SBOMFormat(StrEnum):
 
 class SyftNotFoundError(FileNotFoundError):
     """Raised when ``--sbom`` is requested but ``syft`` is not on PATH."""
+
+
+class SbomGenerationError(RuntimeError):
+    """Raised when ``syft`` runs but exits non-zero while generating the SBOM."""
 
 
 def find_syft() -> str:
@@ -45,5 +55,11 @@ def generate_sbom(
     syft = syft_path or find_syft()
     LOG.info("generating SBOM (%s) via syft: %s -> %s", sbom_format.value, source, output)
     argv = [syft, f"dir:{source}", "-o", f"{sbom_format.value}={output}"]
-    subprocess.check_call(argv)
+    try:
+        subprocess.check_call(argv)
+    except subprocess.CalledProcessError as err:
+        raise SbomGenerationError(
+            f"syft failed (exit {err.returncode}) while generating the SBOM. "
+            f"Command: {' '.join(argv)}. See syft's output above for the cause."
+        ) from err
     return output

@@ -9,7 +9,13 @@ import pytest
 
 from dockerize import oci_output
 from dockerize.oci_output import OciOutputError, build_oci_archive
-from dockerize.sbom import SBOMFormat, SyftNotFoundError, find_syft, generate_sbom
+from dockerize.sbom import (
+    SBOMFormat,
+    SbomGenerationError,
+    SyftNotFoundError,
+    find_syft,
+    generate_sbom,
+)
 
 # -------- syft -------------------------------------------------------------
 
@@ -55,6 +61,24 @@ def test_generate_sbom_alternate_format(tmp_path: Path) -> None:
         )
     argv = run.call_args.args[0]
     assert f"cyclonedx-json={output}" in argv
+
+
+def test_generate_sbom_failure_raises_actionable_error(tmp_path: Path) -> None:
+    """A non-zero exit from syft surfaces as SbomGenerationError naming the
+    tool + command (chained from CalledProcessError), not a bare error."""
+    import subprocess
+
+    source = tmp_path / "ctx"
+    source.mkdir()
+    output = tmp_path / "sbom.spdx.json"
+
+    cpe = subprocess.CalledProcessError(2, "syft")
+    with (
+        patch("subprocess.check_call", side_effect=cpe),
+        pytest.raises(SbomGenerationError, match="syft failed") as excinfo,
+    ):
+        generate_sbom(source, output, syft_path="/usr/bin/syft")
+    assert excinfo.value.__cause__ is cpe
 
 
 # -------- OCI output ------------------------------------------------------
@@ -136,9 +160,10 @@ def test_oci_output_buildx_build_failure_raises_actionable_error(tmp_path: Path)
     assert excinfo.value.__cause__ is cpe
 
 
-def test_oci_output_podman_build_failure_propagates(tmp_path: Path) -> None:
-    """If the podman fallback's `build` step exits non-zero, the error
-    propagates. The follow-up `save` step must not be invoked."""
+def test_oci_output_podman_build_failure_raises_actionable_error(tmp_path: Path) -> None:
+    """If the podman fallback's `build` step exits non-zero, it surfaces as an
+    OciOutputError naming the tool + command (chained from CalledProcessError),
+    and the follow-up `save` step must not be invoked."""
     import subprocess
 
     ctx = tmp_path / "ctx"
@@ -148,23 +173,23 @@ def test_oci_output_podman_build_failure_propagates(tmp_path: Path) -> None:
     def which_side_effect(cmd: str) -> str | None:
         return "/usr/bin/podman" if cmd == "podman" else None
 
+    cpe = subprocess.CalledProcessError(1, "podman build")
     with (
         patch("shutil.which", side_effect=which_side_effect),
         patch.object(oci_output, "_has_buildx", return_value=False),
-        patch(
-            "subprocess.check_call",
-            side_effect=subprocess.CalledProcessError(1, "podman build"),
-        ) as run,
-        pytest.raises(subprocess.CalledProcessError),
+        patch("subprocess.check_call", side_effect=cpe) as run,
+        pytest.raises(OciOutputError, match=r"podman failed.*building the image") as excinfo,
     ):
         build_oci_archive(ctx, out, tag="img:1")
     # Only the build call should have been attempted; `save` never reached.
     assert run.call_count == 1
+    assert excinfo.value.__cause__ is cpe
 
 
-def test_oci_output_podman_save_failure_propagates(tmp_path: Path) -> None:
-    """If `podman build` succeeds but `podman save` fails, the error from
-    save reaches the caller and the partial output isn't claimed as success."""
+def test_oci_output_podman_save_failure_raises_actionable_error(tmp_path: Path) -> None:
+    """If `podman build` succeeds but `podman save` fails, it surfaces as an
+    OciOutputError naming the export step, so the partial output isn't claimed
+    as success."""
     import subprocess
 
     ctx = tmp_path / "ctx"
@@ -185,7 +210,7 @@ def test_oci_output_podman_save_failure_propagates(tmp_path: Path) -> None:
         patch("shutil.which", side_effect=which_side_effect),
         patch.object(oci_output, "_has_buildx", return_value=False),
         patch("subprocess.check_call", side_effect=check_call_side_effect),
-        pytest.raises(subprocess.CalledProcessError, match="podman save"),
+        pytest.raises(OciOutputError, match=r"podman failed.*exporting the OCI archive"),
     ):
         build_oci_archive(ctx, out, tag="img:1")
     assert call_count["n"] == 2
