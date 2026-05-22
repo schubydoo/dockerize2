@@ -183,10 +183,12 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         help=(
-            "Emit an OCI image archive to PATH instead of pushing into a "
-            "daemon. Uses `docker buildx` if available; falls back to "
-            "`podman save --format oci-archive`. Removes the need for "
-            "/var/run/docker.sock when running dockerize from a container."
+            "Emit an OCI image archive to PATH instead of loading the image "
+            "into a local store. Uses `docker buildx` (which still needs a "
+            "reachable Docker daemon, e.g. a mounted /var/run/docker.sock); "
+            "falls back to `podman save --format oci-archive`, which is "
+            "daemonless. The benefit over the default build is the portable "
+            "OCI archive, not avoiding the daemon."
         ),
     )
 

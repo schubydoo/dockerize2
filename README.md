@@ -38,11 +38,16 @@ A pre-built multi-arch image is available at
 - `linux/arm64`
 - `linux/arm/v7` (32-bit hardware-float ABI — Raspberry Pi 32-bit, etc.)
 
-Recommended invocation — emit an OCI archive so you don't need to mount
-the Docker socket:
+OCI-archive output — produces a portable OCI tarball instead of loading the
+image into a local store. `docker buildx` still talks to the Docker daemon,
+so the socket is mounted here too; the difference from classic mode is the
+self-contained `.oci.tar` (plus a matching SBOM) that you load yourself. A
+fully daemonless build is only possible with `--runtime podman`, which is
+not bundled in this image — you would supply podman yourself.
 
 ```bash
 docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD":/work \
   -v /usr/sbin/mini_httpd:/usr/sbin/mini_httpd:ro \
   ghcr.io/schubydoo/dockerize2:latest \
@@ -59,7 +64,7 @@ Then on the host:
 docker load -i httpd.oci.tar
 ```
 
-Classic mode (mounts the daemon socket — less ideal but supported):
+Classic mode — build straight into the daemon's local image store:
 
 ```bash
 docker run --rm \

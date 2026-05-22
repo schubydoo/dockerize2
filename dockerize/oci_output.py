@@ -1,8 +1,13 @@
-"""Emit an OCI image archive without requiring a Docker daemon socket.
+"""Emit an OCI image archive.
 
 Uses ``docker buildx build --output type=oci,dest=<path>`` (or ``podman build
---format oci`` followed by ``podman save``). This lets ``dockerize`` run inside
-a container without mounting ``/var/run/docker.sock``.
+--format oci`` followed by ``podman save``). The output is a portable OCI
+archive rather than an image loaded into a local store.
+
+Note: the ``docker buildx`` path still requires a reachable Docker daemon —
+buildx's default ``docker`` driver delegates to the daemon, and bootstrapping
+a ``docker-container`` driver needs the daemon too. Only the ``podman``
+fallback (``--runtime podman``) is truly daemonless.
 """
 
 from __future__ import annotations
