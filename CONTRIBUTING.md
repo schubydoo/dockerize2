@@ -59,7 +59,7 @@ Please opens (or updates) a **release PR** that bumps `__version__`
 in `dockerize/__init__.py`, updates `CHANGELOG.md`, and edits
 `.release-please-manifest.json`. Merging that PR tags the commit
 (e.g. `v0.3.3`) and fires the existing `release.yml` workflow to
-publish to TestPyPI and push the multi-arch GHCR image.
+publish to PyPI and push the multi-arch GHCR image.
 
 Practical implications:
 

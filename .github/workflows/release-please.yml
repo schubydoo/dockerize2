@@ -3,7 +3,7 @@ name: Release Please
 # Release Please reads Conventional Commits on master and opens a "release PR"
 # that bumps `dockerize/__init__.py` and rewrites `CHANGELOG.md`. Merging that
 # PR tags the commit (e.g. `v0.3.3`), which fires the existing `release.yml`
-# workflow to publish to TestPyPI and push the multi-arch GHCR image.
+# workflow to publish to PyPI and push the multi-arch GHCR image.
 
 on:
   push:
