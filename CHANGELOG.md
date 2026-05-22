@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/schubydoo/dockerize2/compare/v0.4.0...v0.5.0) (2026-05-22)
+
+
+### Features
+
+* publish a minimal :slim image variant ([#92](https://github.com/schubydoo/dockerize2/issues/92)) ([11cb864](https://github.com/schubydoo/dockerize2/commit/11cb864fa5a084a736a141d0d5ec60717bab753a))
+
+
+### Build System & Dependencies
+
+* consolidate apt layer so build-only tools don't persist ([#90](https://github.com/schubydoo/dockerize2/issues/90)) ([7f41b2a](https://github.com/schubydoo/dockerize2/commit/7f41b2a78d2521f129ffc075e966f86a103eed09))
+
 ## [0.4.0](https://github.com/schubydoo/dockerize2/compare/v0.3.3...v0.4.0) (2026-05-22)
 
 `--output-oci` is now fully daemonless, and the runtime image drops the
