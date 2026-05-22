@@ -88,23 +88,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ARG UPX_VERSION=5.1.1
 ARG DOCKER_VERSION=29.5.2
 
-# The pinned base image lags Debian's security archive: it ships libgnutls30
-# 3.7.9-2+deb12u6 while deb12u7 (fixing the GnuTLS CVE batch — CVE-2026-33845,
-# CVE-2026-42010, and others) is already published. Pull the patched package on
-# top of the pinned base. `--only-upgrade` (no exact version pin) always moves
-# forward, so it becomes a harmless no-op once the base image itself catches up
-# — unlike a pinned `=deb12u7`, which would fail the build by implying a
-# downgrade. Drop this once the base no longer lags.
-RUN apt-get update \
- && apt-get install --no-install-recommends -y \
-      curl \
-      xz-utils \
-      ca-certificates \
- && apt-get install --no-install-recommends -y --only-upgrade libgnutls30 \
- && rm -rf /var/lib/apt/lists/*
-
-# Architecture-aware install of the docker CLI and upx.
+# Everything apt + tarball tooling in ONE layer, so build-only packages never
+# persist in the image. curl/xz-utils/ca-certificates are installed, used to
+# fetch the docker CLI + upx, then purged *within this same layer* — a purge in
+# a later layer cannot reclaim an earlier layer's bytes (which is why these used
+# to leak ~12 MB into the published image). ca-certificates is kept (curl needs
+# the trust store; harmless at runtime). The libgnutls30 upgrade IS a real
+# runtime change and intentionally stays.
+#
+# Why the libgnutls upgrade: the pinned base lags Debian's security archive (it
+# ships 3.7.9-2+deb12u6; deb12u7 fixes the GnuTLS CVE batch — CVE-2026-33845,
+# CVE-2026-42010, and others). `--only-upgrade` (no exact pin) always moves
+# forward, so it is a harmless no-op once the base catches up — unlike a pinned
+# `=deb12u7`, which would fail the build by implying a downgrade. Drop it once
+# the base no longer lags.
 RUN set -eux; \
+    apt-get update; \
+    apt-get install --no-install-recommends -y curl xz-utils ca-certificates; \
+    apt-get install --no-install-recommends -y --only-upgrade libgnutls30; \
     arch="$(uname -m)"; \
     case "$arch" in \
       x86_64)   upx_arch=amd64_linux;  docker_arch=x86_64 ;; \
@@ -121,16 +122,14 @@ RUN set -eux; \
     install -m 0755 "/tmp/upx-${UPX_VERSION}-${upx_arch}/upx" /usr/local/bin/upx; \
     rm -rf "/tmp/upx-${UPX_VERSION}-${upx_arch}"; \
     docker --version; \
-    upx --version
+    upx --version; \
+    apt-get purge -y curl xz-utils; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*
 
 # Syft cross-compiled from source in the syft-builder stage above.
 COPY --from=syft-builder /out/syft /usr/local/bin/syft
 RUN syft version
-
-# Strip the tarball tooling we only needed at install time.
-RUN apt-get purge -y curl xz-utils \
- && apt-get autoremove -y \
- && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
