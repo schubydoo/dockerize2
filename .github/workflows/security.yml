@@ -102,12 +102,7 @@ jobs:
   # (Was: codeql.yml)
   # --------------------------------------------------------------------
   codeql:
-    # Job name is `analyze` (not `codeql analyze`) so that the check
-    # context — `analyze (python)` after matrix expansion — matches the
-    # required-check name carried over from the previous codeql.yml.
-    # Rename to the more descriptive form once branch protection moves to
-    # the aggregator-only model.
-    name: analyze
+    name: codeql analyze
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -158,11 +153,7 @@ jobs:
   # (Was: trivy.yml / fs)
   # --------------------------------------------------------------------
   trivy-fs:
-    # Job name is `filesystem scan` (not `trivy filesystem scan`) so that
-    # the check context matches the required-check name carried over from
-    # the previous trivy.yml. Rename to the more descriptive form once
-    # branch protection moves to the aggregator-only model.
-    name: filesystem scan
+    name: trivy filesystem scan
     needs: changes
     # Gates on changes to pyproject.toml / uv.lock — fs scan reads the
     # dep manifest; nothing else moves the result. Always runs on push /
