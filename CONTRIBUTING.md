@@ -69,6 +69,41 @@ Practical implications:
 - Pure `docs:`, `ci:`, `chore:` work won't trigger a release on its
   own; it rides along with the next `feat:`/`fix:` commit.
 
+## CI / GitHub Actions
+
+The CI surface lives in `.github/workflows/`. Two big workflows + a few specialised ones:
+
+| File | Purpose | Triggers |
+|---|---|---|
+| `ci.yml` | Plan + unit tests (matrix) + integration + slim-smoke + aggregator | push to master, pull_request |
+| `security.yml` | CodeQL + Gitleaks + Trivy fs/image + Zizmor + dependency-review + aggregator | push, pull_request, weekly cron |
+| `lint.yml` | ruff check + ruff format --check + mypy --strict | push, pull_request |
+| `pr-title.yml` | Conventional Commits validation on the PR title | pull_request |
+| `release-please.yml`, `release.yml`, `scorecard.yml` | release plumbing + supply-chain scoring | tag push / master push / schedule |
+
+### The `plan` job (ci.yml)
+
+The first job in `ci.yml` is `plan`. It diffs the PR against base and emits outputs that gate every other job and shape the test matrix. Most PRs run a **single** matrix cell (`ubuntu-latest × Python 3.13`); master push runs the full 3 OS × 3 Python matrix.
+
+**PR labels:**
+
+| Label | Effect |
+|---|---|
+| `test:full` | Expand the matrix back to 3 OS × 3 Python on this PR (use for cross-platform-sensitive changes) |
+| `test:skip` | Skip `tests` + `integration` entirely (use only for CI plumbing that doesn't change the test surface) |
+
+`security.yml` has a parallel `changes` job that gates trivy-fs / trivy-image / zizmor on file changes (CodeQL, Gitleaks, and dependency-review always run on every PR).
+
+### Branch protection
+
+Only **three** status checks are required:
+
+1. `ci required checks passed` — aggregator that fails iff any `ci.yml` job failed (skipped is fine).
+2. `security required checks passed` — same pattern for `security.yml`.
+3. `conventional PR title` — validates the PR title parses as Conventional Commits.
+
+Adding a new job: append its ID to the matching aggregator's `needs:` list. Branch protection never needs to change.
+
 ## What we look for
 
 - Tests for new behaviour. Coverage target is ≥85 % on `dockerize/`.
