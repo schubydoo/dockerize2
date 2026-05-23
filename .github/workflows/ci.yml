@@ -278,6 +278,74 @@ jobs:
           fi
 
   # --------------------------------------------------------------------
+  # Full image smoke — sibling of slim-smoke for the `:latest` variant.
+  # Target-less build = the LAST stage in the Dockerfile (`full`), which
+  # is what release.yml publishes as `:latest`. release.yml builds this
+  # multi-arch on tag push, but PRs touching Dockerfile previously had
+  # no signal for the `:full` stage either. This job closes the same
+  # gap that slim-smoke closes for `:slim`.
+  #
+  # Validates three things on every PR (gated on python_changed):
+  #   1. The target-less Dockerfile stage actually builds. Catches
+  #      stage-4b breakage (the docker CLI / upx / syft install layer).
+  #   2. The bundled tools (docker CLI, syft, upx) are present and
+  #      report a version. Catches stale ARGs / broken extract steps.
+  #   3. Compressed image stays under 120 MB. v0.5.0 :latest ships at
+  #      ~93 MB compressed; threshold leaves headroom for normal base
+  #      / deps bumps but catches accidental ~25 MB additions.
+  # amd64 only; multi-arch coverage stays with the release pipeline.
+  # --------------------------------------------------------------------
+  full-smoke:
+    name: full image smoke
+    needs: [plan, tests]
+    if: needs.plan.outputs.python_changed == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - name: Build :latest (amd64, load)
+        # Target-less build = the `full` stage (LAST in the Dockerfile).
+        # Same artefact as the release.yml `:latest` build, single-arch.
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: dockerize2:full-smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Functional smoke — bundled tools report versions
+        # The full image bundles docker CLI + syft + upx on top of the
+        # slim base. `--version` calls don't need a docker daemon
+        # (client-side only) so no socket mount is required.
+        run: |
+          set -euo pipefail
+          docker run --rm dockerize2:full-smoke --help | head -5
+          docker run --rm --entrypoint /usr/local/bin/docker dockerize2:full-smoke --version
+          docker run --rm --entrypoint /usr/local/bin/syft dockerize2:full-smoke version
+          docker run --rm --entrypoint /usr/local/bin/upx dockerize2:full-smoke --version | head -1
+      - name: Size guard — full image must stay reasonable (< 120 MB compressed)
+        # v0.5.0 :latest ships at ~93 MB compressed on GHCR. 120 MB
+        # leaves comfortable headroom for normal base/deps bumps but
+        # catches accidental ~25 MB additions (e.g. a stranded apt
+        # layer, an unintended package install).
+        run: |
+          set -euo pipefail
+          bytes=$(docker save dockerize2:full-smoke | gzip -c | wc -c)
+          mb=$((bytes / 1024 / 1024))
+          echo "Full image (docker save | gzip): ${mb} MB (${bytes} bytes)"
+          if [ "$mb" -gt 120 ]; then
+            echo "::error::Full image exceeded 120 MB threshold: ${mb} MB"
+            exit 1
+          fi
+
+  # --------------------------------------------------------------------
   # Required-checks aggregator. ONE check for branch protection to gate
   # on, regardless of how many jobs exist. `if: always()` so it runs
   # even when needs failed; jq pattern fails the aggregator iff any
@@ -294,6 +362,7 @@ jobs:
       - tests
       - integration
       - slim-smoke
+      - full-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
