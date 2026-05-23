@@ -22,6 +22,24 @@ repository:
   allow_auto_merge: true
   delete_branch_on_merge: true
 
+# Labels managed declaratively by Probot. Anything in the repo not listed here
+# is left alone (Probot doesn't delete by default). Standard GitHub-created
+# labels (bug, enhancement, documentation, etc.) are intentionally omitted —
+# the repo keeps them, we just don't manage them from here.
+labels:
+  - name: dependencies
+    color: ededed
+    description: Renovate-opened dependency update PRs (and the dashboard issue)
+  - name: security
+    color: d93f0b
+    description: Security-related — Renovate vulnerability alerts use this
+  - name: "test:full"
+    color: "0052cc"
+    description: "Expand CI matrix to 3 OS × 3 Python on this PR (uv-style opt-in)"
+  - name: "test:skip"
+    color: 6e7681
+    description: "Skip tests + integration + slim-smoke (CI plumbing PRs only)"
+
 branches:
   - name: master
     protection:
@@ -33,23 +51,28 @@ branches:
         # Context names must match the check-run names GitHub records
         # exactly — that's the job's `name:` field, not "workflow / job".
         # The check must also have run on the repo at least once before
-        # it can be marked required. All five have, per
-        # `gh api repos/.../commits/master/check-runs`.
+        # it can be marked required.
+        #
+        # Aggregator pattern (uv/ruff-style, landed 2026-05-22 in PRs
+        # #93-#102 + the gh-api PATCH of branch protection):
+        #  - `ci required checks passed` is ci.yml's aggregator (needs:
+        #    plan, tests, integration, slim-smoke; if: always() + jq).
+        #    Add a new ci.yml job by appending to that needs: list — do
+        #    NOT add the individual check name here.
+        #  - `security required checks passed` is security.yml's
+        #    aggregator (needs: changes, codeql, gitleaks, trivy-fs,
+        #    trivy-image, zizmor, dependency-review).
+        #  - `conventional PR title` (pr-title.yml) gates the squash-merge
+        #    subject, which is what Release Please parses. Not stranded
+        #    by fork PRs — same-repo flow only.
         #
         # `OSSF Scorecard` is intentionally NOT required: scorecard.yml
         # only triggers on push + schedule + branch_protection_rule, so
         # requiring it would leave every PR perpetually pending.
         strict: true
         contexts:
-          - "ruff + mypy"
-          - "analyze (python)"
-          - "secret scan"
-          - "filesystem scan"
-          - "workflow audit"
-          # pr-title.yml runs on every `pull_request`, so requiring it does
-          # not strand PRs the way `OSSF Scorecard` would. The squash-merge
-          # title is what Release Please parses, so a clean title is a
-          # release-correctness gate, not just style.
+          - "ci required checks passed"
+          - "security required checks passed"
           - "conventional PR title"
       # `null` (not `false`) — the Probot Settings App rejects `false` here
       # silently. See repository-settings/app#923 (comment 2200600178).
