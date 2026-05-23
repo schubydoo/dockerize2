@@ -32,9 +32,15 @@
     },
     {
       "customType": "regex",
-      "description": "anchore/syft version (github-releases).",
-      "managerFilePatterns": ["/^Dockerfile$/"],
-      "matchStrings": ["ARG SYFT_VERSION=(?<currentValue>\\S+)"],
+      "description": "anchore/syft version — tracked in BOTH Dockerfile (ARG SYFT_VERSION) and .github/workflows/ci.yml (env: SYFT_VERSION). Renovate detects both as the same dep and bumps them in a single PR. The v-prefix is intentional and NOT stripped via extractVersionTemplate (cf. UPX/DOCKER above): the value flows into a Go module path (github.com/anchore/syft/cmd/syft@vX.Y.Z) which Go's tooling requires to carry the v prefix.",
+      "managerFilePatterns": [
+        "/^Dockerfile$/",
+        "/^\\.github/workflows/ci\\.yml$/"
+      ],
+      "matchStrings": [
+        "ARG SYFT_VERSION=(?<currentValue>\\S+)",
+        "SYFT_VERSION:\\s*(?<currentValue>\\S+)"
+      ],
       "depNameTemplate": "anchore/syft",
       "datasourceTemplate": "github-releases"
     },
@@ -90,6 +96,28 @@
       ],
       "matchUpdateTypes": ["major"],
       "groupName": "docker/* actions (major)"
+    },
+    {
+      "description": "Group security-tooling actions — they cover the same security.yml scanners and are useful to review together.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": [
+        "github/codeql-action",
+        "actions/dependency-review-action",
+        "aquasecurity/trivy-action",
+        "gitleaks/gitleaks-action",
+        "ossf/scorecard-action",
+        "sigstore/cosign-installer"
+      ],
+      "groupName": "security tooling actions"
+    },
+    {
+      "description": "Group astral-sh/uv updates across the action (setup-uv) and the Dockerfile FROM image (ghcr.io/astral-sh/uv) — they release in lockstep.",
+      "matchPackageNames": [
+        "astral-sh/setup-uv",
+        "astral-sh/uv",
+        "ghcr.io/astral-sh/uv"
+      ],
+      "groupName": "astral-sh/uv"
     }
   ]
 }
