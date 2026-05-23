@@ -323,3 +323,46 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
+
+  # --------------------------------------------------------------------
+  # Required-checks aggregator (security side). Mirrors the pattern in
+  # ci.yml's `ci-required-checks-passed`. Branch protection requires
+  # only this one check from this workflow (plus the ci aggregator and
+  # `conventional PR title`); the per-scanner check names are not
+  # individually required, so renaming a scanner or adding a new one
+  # doesn't silently break protection.
+  #
+  # GitHub Actions doesn't support cross-workflow `needs:`, which is why
+  # security and ci each carry their own aggregator. Two required checks
+  # in branch protection instead of one — acceptable tradeoff for
+  # keeping security in its own file.
+  # --------------------------------------------------------------------
+  security-required-checks-passed:
+    name: security required checks passed
+    if: always()
+    needs:
+      - changes
+      - codeql
+      - gitleaks
+      - trivy-fs
+      - trivy-image
+      - zizmor
+      - dependency-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check required jobs passed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          failing=$(echo "$NEEDS_JSON" | jq -r '
+            to_entries[]
+            | select(.value.result != "success" and .value.result != "skipped")
+            | "\(.key): \(.value.result)"
+          ')
+          if [ -n "$failing" ]; then
+            echo "Failed or cancelled jobs:"
+            echo "$failing"
+            exit 1
+          fi
+          echo "All required jobs passed (or were intentionally skipped)."
