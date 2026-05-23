@@ -21,6 +21,21 @@ repository:
   allow_rebase_merge: true
   allow_auto_merge: true
   delete_branch_on_merge: true
+  allow_update_branch: true
+  # Web-UI squash defaults. Both default to PR_TITLE / PR_BODY out of
+  # the box; we override:
+  #   - squash_merge_commit_title: COMMIT_OR_PR_TITLE — use the single
+  #     commit's subject when a PR has only one commit, fall back to PR
+  #     title otherwise. Matches our typical workflow where a PR is one
+  #     well-titled commit, and avoids the "(#NN)" suffix duplication.
+  #   - squash_merge_commit_message: COMMIT_MESSAGES — concatenate the
+  #     branch's commit messages into the squash body. Preserves the
+  #     hand-crafted commit bodies (rationale + co-authorship trailers)
+  #     instead of replacing with the PR description.
+  # merge_commit_* settings deliberately omitted — allow_merge_commit
+  # is false, so those settings are inert.
+  squash_merge_commit_title: COMMIT_OR_PR_TITLE
+  squash_merge_commit_message: COMMIT_MESSAGES
 
 # Labels managed declaratively by Probot. Anything in the repo not listed here
 # is left alone (Probot doesn't delete by default). Standard GitHub-created
