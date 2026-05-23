@@ -13,14 +13,126 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # --------------------------------------------------------------------
+  # Plan — determines which optional jobs run and what matrix shape to
+  # use. Outputs are consumed by every other job in this workflow via
+  # `needs: plan`.
+  #
+  # On push / schedule / workflow_dispatch: run everything, full 3x3
+  # matrix. The master branch is the single source of "we definitely
+  # built and tested on every supported platform."
+  #
+  # On pull_request: detect what changed; default to a single
+  # ubuntu-latest x 3.13 matrix cell (cheap, fast, catches >95% of
+  # regressions); skip tests/integration entirely if no Python code
+  # moved (docs-only / workflow-only PRs).
+  #
+  # PR labels:
+  #   test:full  - force the full 3x3 matrix on this PR
+  #   test:skip  - skip tests + integration entirely (e.g. CI plumbing
+  #                PR that doesn't change the test surface)
+  # --------------------------------------------------------------------
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      python_changed: ${{ steps.plan.outputs.python_changed }}
+      run_tests: ${{ steps.plan.outputs.run_tests }}
+      run_integration: ${{ steps.plan.outputs.run_integration }}
+      matrix_os: ${{ steps.plan.outputs.matrix_os }}
+      matrix_python: ${{ steps.plan.outputs.matrix_python }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+
+          # Defaults: non-PR events (push / schedule / dispatch) run the
+          # full suite on the full matrix. The master push run is the
+          # canonical "full platform coverage" gate.
+          python_changed=true
+          run_tests=true
+          run_integration=true
+          matrix_os='["ubuntu-latest","macos-latest","windows-latest"]'
+          matrix_python='["3.11","3.12","3.13"]'
+
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch origin "${BASE_REF}" --depth=50
+            files=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+            echo "Changed files:"
+            printf '%s\n' "$files"
+
+            # Detect Python-relevant changes (the only kind that affects
+            # tests/integration coverage).
+            python_changed=false
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              case "$f" in
+                dockerize/*|tests/*|pyproject.toml|uv.lock) python_changed=true ;;
+              esac
+            done <<< "$files"
+
+            # PR labels.
+            has_full=false
+            has_skip=false
+            if echo "$LABELS" | grep -q '"test:full"'; then has_full=true; fi
+            if echo "$LABELS" | grep -q '"test:skip"'; then has_skip=true; fi
+
+            # Trim PR matrix to a single cell unless test:full opts in.
+            if [ "$has_full" = false ]; then
+              matrix_os='["ubuntu-latest"]'
+              matrix_python='["3.13"]'
+            fi
+
+            # Skip optional jobs when nothing relevant changed, or when
+            # the maintainer opts out explicitly.
+            if [ "$has_skip" = true ] || [ "$python_changed" = false ]; then
+              run_tests=false
+              run_integration=false
+            fi
+          fi
+
+          {
+            echo "python_changed=$python_changed"
+            echo "run_tests=$run_tests"
+            echo "run_integration=$run_integration"
+            echo "matrix_os=$matrix_os"
+            echo "matrix_python=$matrix_python"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "==== Plan ===="
+          echo "  event:           $EVENT"
+          echo "  python_changed:  $python_changed"
+          echo "  run_tests:       $run_tests"
+          echo "  run_integration: $run_integration"
+          echo "  matrix_os:       $matrix_os"
+          echo "  matrix_python:   $matrix_python"
+
+  # --------------------------------------------------------------------
+  # Unit tests across the configured matrix. Matrix dimensions come from
+  # the plan job — PRs default to 1 cell, master push runs 3x3.
+  # --------------------------------------------------------------------
   tests:
     name: tests (${{ matrix.os }}, ${{ matrix.python-version }})
+    needs: plan
+    if: needs.plan.outputs.run_tests == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13"]
+        os: ${{ fromJSON(needs.plan.outputs.matrix_os) }}
+        python-version: ${{ fromJSON(needs.plan.outputs.matrix_python) }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -40,10 +152,16 @@ jobs:
         # symlink + integration tests) is ~83%; floor sits a few points below.
         run: uv run --python ${{ matrix.python-version }} pytest -q --cov=dockerize --cov-report=term-missing --cov-fail-under=80
 
+  # --------------------------------------------------------------------
+  # Integration — exercises the real syft + upx + docker pipeline.
+  # Gates on `run_integration` (auto-skipped on docs-only PRs).
+  # --------------------------------------------------------------------
   integration:
     name: integration (ubuntu)
+    needs: [plan, tests]
+    if: needs.plan.outputs.run_integration == 'true'
     runs-on: ubuntu-latest
-    needs: tests
+    timeout-minutes: 15
     env:
       # Kept in sync with the Dockerfile's SYFT_VERSION ARG. Renovate
       # tracks both via the custom regex manager in renovate.json.
@@ -82,3 +200,42 @@ jobs:
         run: uv sync --extra dev --python 3.13
       - name: Integration tests
         run: uv run pytest -q --run-integration -k integration
+
+  # --------------------------------------------------------------------
+  # Required-checks aggregator. ONE check for branch protection to gate
+  # on, regardless of how many jobs exist. `if: always()` so it runs
+  # even when needs failed; jq pattern fails the aggregator iff any
+  # listed job is not success-or-skipped (i.e. failed, cancelled, etc).
+  #
+  # Same pattern as uv/ruff. Add new required jobs by appending to
+  # `needs:`; nothing else to change.
+  #
+  # NOTE: When PR #93 (slim-smoke) merges to master, add `slim-smoke`
+  # to the needs: list and rebase this branch. Same for any other jobs
+  # added to ci.yml between now and merge.
+  # --------------------------------------------------------------------
+  ci-required-checks-passed:
+    name: ci required checks passed
+    if: always()
+    needs:
+      - plan
+      - tests
+      - integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check required jobs passed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          failing=$(echo "$NEEDS_JSON" | jq -r '
+            to_entries[]
+            | select(.value.result != "success" and .value.result != "skipped")
+            | "\(.key): \(.value.result)"
+          ')
+          if [ -n "$failing" ]; then
+            echo "Failed or cancelled jobs:"
+            echo "$failing"
+            exit 1
+          fi
+          echo "All required jobs passed (or were intentionally skipped)."
