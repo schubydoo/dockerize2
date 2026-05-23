@@ -141,16 +141,33 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
+      # Matrix values flow through an env var (rather than being inlined
+      # directly as `${{ matrix.python-version }}`) so zizmor's template-
+      # injection static analysis doesn't flag the `run:` blocks. The
+      # matrix is hard-coded in the `plan` job (only ever one of two
+      # arrays) and not derived from any PR-controllable source, so this
+      # is purely a static-analysis appeasement — no real security delta.
+      # `shell: bash` keeps the `"$PYTHON_VERSION"` syntax cross-platform
+      # (Windows runners default to pwsh otherwise).
       - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+        shell: bash
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv python install "$PYTHON_VERSION"
       - name: Install
-        run: uv sync --extra dev --python ${{ matrix.python-version }}
+        shell: bash
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv sync --extra dev --python "$PYTHON_VERSION"
       - name: Run tests
         # --cov-fail-under is set conservatively to catch regressions, not to
         # encode the current ceiling. Raise it as coverage improves.
         # Actual on the lowest-coverage platform (Windows, which skips the
         # symlink + integration tests) is ~83%; floor sits a few points below.
-        run: uv run --python ${{ matrix.python-version }} pytest -q --cov=dockerize --cov-report=term-missing --cov-fail-under=80
+        shell: bash
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv run --python "$PYTHON_VERSION" pytest -q --cov=dockerize --cov-report=term-missing --cov-fail-under=80
 
   # --------------------------------------------------------------------
   # Integration — exercises the real syft + upx + docker pipeline.
