@@ -118,6 +118,13 @@
         "ghcr.io/astral-sh/uv"
       ],
       "groupName": "astral-sh/uv"
+    },
+    {
+      "description": "Auto-merge patch updates of Dockerfile-bundled runtime tools (syft, upx, docker CLI). These are bumped via `build:` commits which auto-trigger a patch release (per #89), so the patch flows through to `:latest` without manual intervention -- the human gate at the `pypi` GitHub environment still pauses for explicit approval before anything reaches PyPI users. Risk: a patch bump could ship an unexpected breaking change; mitigation: slim-smoke and full-smoke jobs exercise --output-oci (syft) and the bundled tool versions on every PR, and integration tests run a real syft+upx pipeline.",
+      "matchPackageNames": ["upx/upx", "anchore/syft", "docker/cli"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "branch"
     }
   ]
 }
