@@ -17,6 +17,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Releases must NOT be cancelled mid-flight — a partially-pushed multi-arch
+  # image or a half-uploaded PyPI publish is harder to recover from than just
+  # letting two release runs serialise.
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -25,6 +32,7 @@ jobs:
   pypi:
     name: PyPI publish
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # The `pypi` environment gates this job: deployments are restricted to
     # `v*` tags and require a maintainer's manual approval before the publish
     # runs. PyPI Trusted Publishing (OIDC) is configured for this repo +
@@ -69,6 +77,10 @@ jobs:
   image:
     name: GHCR image (multi-arch + cosign + SBOM)
     runs-on: ubuntu-latest
+    # Multi-arch (amd64 + arm64 + armv7) under QEMU emulation plus syft
+    # cross-compile + cosign sign of both `:latest` and `:slim` tags. v0.5.0
+    # ran in 5m20s on a warm cache; cold cache can push toward 30 min.
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -194,6 +206,7 @@ jobs:
     name: GitHub Release
     needs: [pypi, image]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
