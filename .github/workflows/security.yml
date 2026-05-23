@@ -1,0 +1,254 @@
+name: Security
+
+# Consolidates the previous four security-scan workflows into one file so the
+# project's security posture is grokkable at a glance. Each scanner remains a
+# distinct JOB (not a step) so they run in parallel and still appear as
+# individually identifiable rows in the PR checks list and the code-scanning
+# Security tab — this is FILE consolidation, not job collapse.
+#
+# Replaces:
+#   - .github/workflows/codeql.yml    (Mon 03:23 UTC)
+#   - .github/workflows/gitleaks.yml  (Mon 06:44 UTC)
+#   - .github/workflows/trivy.yml     (Mon 05:12 UTC)
+#   - .github/workflows/zizmor.yml    (Mon 04:37 UTC)
+# Plus adds a new `dependency-review` job that fails PRs which introduce
+# transitive deps with known vulnerabilities at HIGH+ severity (complement to
+# trivy-fs, which scans the dep set we already have).
+#
+# Schedules collapsed to a single Monday 04:37 UTC slot (formerly zizmor's).
+# All scans fire together weekly; total wall time is ~5 min summed, not worth
+# spreading across four cron slots.
+#
+# Code-scanning alert continuity note: the analysis key for code-scanning
+# alerts includes the workflow path, so renaming `trivy.yml` → `security.yml`
+# resets the link between the existing open Trivy alerts and the new scans.
+# Those alerts will re-appear under the new path on the next run with the
+# same CVE info. For dockerize2 the baseline is 7 open alerts (all
+# upstream-gated CVEs we can't action), so the reset is a non-event.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: "37 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------
+  # CodeQL — semantic source analysis. Always runs on PRs because
+  # security-relevant code patterns can be introduced anywhere.
+  # (Was: codeql.yml)
+  # --------------------------------------------------------------------
+  codeql:
+    # Job name is `analyze` (not `codeql analyze`) so that the check
+    # context — `analyze (python)` after matrix expansion — matches the
+    # required-check name carried over from the previous codeql.yml.
+    # Rename to the more descriptive form once branch protection moves to
+    # the aggregator-only model.
+    name: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          languages: ${{ matrix.language }}
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # --------------------------------------------------------------------
+  # Gitleaks — secret scanning. Always runs on every PR; secrets can land
+  # anywhere (docs, examples, fixture files). (Was: gitleaks.yml)
+  # --------------------------------------------------------------------
+  gitleaks:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --------------------------------------------------------------------
+  # Trivy filesystem scan — gates on FIXABLE CVEs in our declared deps.
+  # `ignore-unfixed: true` means we only fail when an upstream fix exists.
+  # (Was: trivy.yml / fs)
+  # --------------------------------------------------------------------
+  trivy-fs:
+    # Job name is `filesystem scan` (not `trivy filesystem scan`) so that
+    # the check context matches the required-check name carried over from
+    # the previous trivy.yml. Rename to the more descriptive form once
+    # branch protection moves to the aggregator-only model.
+    name: filesystem scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Trivy fs
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+          # Gate on fixable findings in our own dependencies. ignore-unfixed
+          # means only CVEs with an available fix fail the job.
+          exit-code: "1"
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  # --------------------------------------------------------------------
+  # Trivy image scan — report-only for runtime-image CVEs in third-party
+  # binaries (docker CLI, syft) whose patches we usually can't action.
+  # On PR: builds the PR's Dockerfile (amd64, --load) and scans THAT.
+  # On push/cron: scans the published :latest from GHCR.
+  # Single image-scan job for both events keeps the analysis key stable
+  # across PR and master (alerts otherwise show "cannot determine alerts
+  # introduced by this PR"). (Was: trivy.yml / image)
+  # --------------------------------------------------------------------
+  trivy-image:
+    name: trivy image scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Buildx
+        if: github.event_name == 'pull_request'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Build PR image (load to runner)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: dockerize2:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Resolve image ref
+        id: ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "ref=dockerize2:scan" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=ghcr.io/${OWNER}/dockerize2:latest" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Trivy image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.ref.outputs.ref }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+  # --------------------------------------------------------------------
+  # Zizmor — audits the workflow files themselves for misconfigurations
+  # (unpinned actions, dangerous triggers, token leaks, etc).
+  # (Was: zizmor.yml)
+  # --------------------------------------------------------------------
+  zizmor:
+    name: workflow audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Install zizmor
+        run: uv tool install zizmor
+      - name: Run zizmor
+        run: zizmor --format sarif . > results.sarif
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          sarif_file: results.sarif
+          category: zizmor
+
+  # --------------------------------------------------------------------
+  # Dependency review (NEW) — GitHub-first-party action that diffs the
+  # PR's dependency manifest against base and fails on newly-introduced
+  # vulnerable transitive deps. Complements trivy-fs (which scans the
+  # already-present manifest); this catches CVEs *at the merge boundary*
+  # before they land on master. PR events only — no base to diff against
+  # on push.
+  # --------------------------------------------------------------------
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write  # to post the on-failure summary comment
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Dependency Review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
