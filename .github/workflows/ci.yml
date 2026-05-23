@@ -82,3 +82,68 @@ jobs:
         run: uv sync --extra dev --python 3.13
       - name: Integration tests
         run: uv run pytest -q --run-integration -k integration
+
+  slim-smoke:
+    # The `:slim` variant (introduced in #92, shipped in v0.5.0) is the
+    # pure-Python image without the docker CLI / syft / upx — its whole point
+    # is making `dockerize --output-oci` work without a Docker daemon. This
+    # job validates three things on every PR:
+    #   1. The `target: slim` Dockerfile stage actually builds (release.yml
+    #      builds it on tag push, but PRs touching Dockerfile previously had
+    #      no signal).
+    #   2. `--output-oci` produces a valid OCI archive from inside the slim
+    #      container with NO docker socket mounted — proves daemonless.
+    #   3. Compressed image stays under 60 MB. v0.5.0 ships at ~35-40 MB on
+    #      GHCR; threshold sits well above so trivial bumps don't trigger,
+    #      but accidental ~25 MB additions will.
+    # amd64 only; multi-arch coverage stays with the release pipeline.
+    # `needs: tests` short-circuits when unit tests fail.
+    name: slim image smoke
+    runs-on: ubuntu-latest
+    needs: tests
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Build :slim (amd64, load)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          target: slim
+          platforms: linux/amd64
+          load: true
+          tags: dockerize2:slim-smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Functional smoke — --output-oci runs daemonless
+        # /bin/ls is part of the slim image's debian-slim base; trace runs
+        # inside the container. No docker socket mounted — proves that the
+        # `:slim` variant delivers on its daemonless promise.
+        run: |
+          set -euo pipefail
+          mkdir -p oci-out
+          docker run --rm \
+            -v "$PWD/oci-out:/out" \
+            dockerize2:slim-smoke \
+            --output-oci /out/ls.oci.tar /bin/ls
+          test -s oci-out/ls.oci.tar
+          tar -tf oci-out/ls.oci.tar | grep -q '^oci-layout$'
+          tar -tf oci-out/ls.oci.tar | grep -q '^index.json$'
+          echo "OCI archive valid ($(stat -c%s oci-out/ls.oci.tar) bytes)"
+      - name: Size guard — slim must stay slim (< 60 MB compressed)
+        # `docker save | gzip` overshoots registry-compressed size somewhat
+        # but it's the closest proxy available in a CI step without pushing.
+        run: |
+          set -euo pipefail
+          bytes=$(docker save dockerize2:slim-smoke | gzip -c | wc -c)
+          mb=$((bytes / 1024 / 1024))
+          echo "Slim image (docker save | gzip): ${mb} MB (${bytes} bytes)"
+          if [ "$mb" -gt 60 ]; then
+            echo "::error::Slim image exceeded 60 MB threshold: ${mb} MB"
+            exit 1
+          fi
