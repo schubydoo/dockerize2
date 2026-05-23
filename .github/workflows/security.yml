@@ -42,6 +42,61 @@ concurrency:
 
 jobs:
   # --------------------------------------------------------------------
+  # Changes detection — runs once at the top of every PR run. Outputs
+  # boolean flags for the path-gated jobs below (trivy-fs, trivy-image,
+  # zizmor). Always-run scanners (codeql, gitleaks, dependency-review)
+  # ignore these outputs.
+  #
+  # On non-PR events (push, schedule, workflow_dispatch) the diff step is
+  # skipped and outputs are empty; gated jobs fall through to their
+  # `|| github.event_name != 'pull_request'` clause and run unconditionally.
+  # The job itself still runs (no steps fail) so `needs: changes` is
+  # satisfied for dependents.
+  # --------------------------------------------------------------------
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      deps: ${{ steps.diff.outputs.deps }}
+      image: ${{ steps.diff.outputs.image }}
+      workflows: ${{ steps.diff.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Diff against base
+        id: diff
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin "${BASE_REF}" --depth=50
+          files=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          echo "Changed files:"
+          printf '%s\n' "$files"
+          deps=false
+          image=false
+          workflows=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              pyproject.toml|uv.lock)       deps=true; image=true ;;
+              Dockerfile)                    image=true ;;
+              .github/workflows/*.yml|.github/workflows/*.yaml) workflows=true ;;
+            esac
+          done <<< "$files"
+          {
+            echo "deps=$deps"
+            echo "image=$image"
+            echo "workflows=$workflows"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved flags: deps=$deps image=$image workflows=$workflows"
+
+  # --------------------------------------------------------------------
   # CodeQL — semantic source analysis. Always runs on PRs because
   # security-relevant code patterns can be introduced anywhere.
   # (Was: codeql.yml)
@@ -99,6 +154,11 @@ jobs:
   # --------------------------------------------------------------------
   trivy-fs:
     name: trivy filesystem scan
+    needs: changes
+    # Gates on changes to pyproject.toml / uv.lock — fs scan reads the
+    # dep manifest; nothing else moves the result. Always runs on push /
+    # schedule so the master-tracked baseline stays current.
+    if: needs.changes.outputs.deps == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -137,6 +197,12 @@ jobs:
   # --------------------------------------------------------------------
   trivy-image:
     name: trivy image scan
+    needs: changes
+    # Gates on Dockerfile or dep changes — those are the only PR-side
+    # diffs that can change the built image's CVE surface. Always runs on
+    # push / schedule (scans :latest from GHCR; catches drift even when
+    # the Dockerfile is untouched).
+    if: needs.changes.outputs.image == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -194,6 +260,11 @@ jobs:
   # --------------------------------------------------------------------
   zizmor:
     name: workflow audit
+    needs: changes
+    # Gates on workflow file changes — zizmor exclusively audits workflows.
+    # Always runs on push / schedule so a new zizmor rule release still
+    # has a chance to flag pre-existing issues.
+    if: needs.changes.outputs.workflows == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
