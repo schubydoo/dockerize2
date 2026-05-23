@@ -10,10 +10,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   zizmor:
     name: workflow audit
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       security-events: write
       contents: read
