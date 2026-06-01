@@ -70,8 +70,8 @@ def _classify_elf(path: Path) -> tuple[bool, bool]:
             if fde.read(4) != b"\x7fELF":
                 return (False, False)
             fde.seek(0)
-            elf = ELFFile(fde)  # type: ignore[no-untyped-call]
-            return (True, elf.get_section_by_name(".interp") is not None)  # type: ignore[no-untyped-call]
+            elf = ELFFile(fde)
+            return (True, elf.get_section_by_name(".interp") is not None)
     except (ELFError, OSError):
         return (False, False)
 

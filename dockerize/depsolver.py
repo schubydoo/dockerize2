@@ -52,8 +52,8 @@ def _read_interpreter(path: Path) -> str | None:
             if fde.read(len(ELF_MAGIC)) != ELF_MAGIC:
                 return None
             fde.seek(0)
-            elf = ELFFile(fde)  # type: ignore[no-untyped-call]
-            interp_section = elf.get_section_by_name(".interp")  # type: ignore[no-untyped-call]
+            elf = ELFFile(fde)
+            interp_section = elf.get_section_by_name(".interp")
             if interp_section is None:
                 return None
             data: bytes = interp_section.data()
