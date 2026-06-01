@@ -72,12 +72,16 @@ RUN set -eux; \
 #   - `dockerize --output-oci PATH` → write a portable OCI image archive.
 # Published as `:slim` and `:X.Y[.Z]-slim`.
 #
-# Why the libgnutls upgrade: the pinned base lags Debian's security archive (it
-# ships 3.7.9-2+deb12u6; deb12u7 fixes the GnuTLS CVE batch — CVE-2026-33845,
-# CVE-2026-42010, and others). `--only-upgrade` (no exact pin) always moves
-# forward, so it is a harmless no-op once the base catches up — unlike a pinned
-# `=deb12u7`, which would fail the build by implying a downgrade. Drop it once
-# the base no longer lags.
+# Why the apt upgrades: the pinned base lags Debian's security archive, so we
+# pull forward specific patched libs the scanners flag:
+#   - libgnutls30: base ships 3.7.9-2+deb12u6; deb12u7 fixes the GnuTLS CVE
+#     batch — CVE-2026-33845, CVE-2026-42010, and others.
+#   - libgcrypt20: base ships 1.10.1-3; 1.10.1-3+deb12u1 (DSA-6294-1) fixes
+#     CVE-2026-41989, a heap overflow / DoS via crafted ECDH ciphertext to
+#     gcry_pk_decrypt.
+# `--only-upgrade` (no exact pin) always moves forward, so each is a harmless
+# no-op once the base catches up — unlike a pinned `=deb12u7`, which would fail
+# the build by implying a downgrade. Drop a package once the base no longer lags.
 # -----------------------------------------------------------------------------
 FROM python:3.14-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb AS slim
 
@@ -88,7 +92,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install --no-install-recommends -y --only-upgrade libgnutls30; \
+    apt-get install --no-install-recommends -y --only-upgrade libgnutls30 libgcrypt20; \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/dist/*.whl /tmp/
