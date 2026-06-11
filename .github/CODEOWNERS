@@ -2,3 +2,11 @@
 # a PR is opened. Not a merge gate — branch protection's
 # `require_code_owner_reviews` is intentionally off (see settings.yml).
 * @schubydoo
+
+# Renovate-managed paths — no code owner, so lock-maintenance / dep PRs don't
+# auto-request review. (Rare exception: a dep bump that makes a `# type: ignore`
+# unused forces a manual lint-fix commit to source, which re-arms ownership.)
+/uv.lock
+/Dockerfile
+/.pre-commit-config.yaml
+/.github/workflows/
