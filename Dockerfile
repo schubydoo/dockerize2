@@ -137,7 +137,7 @@ CMD ["--help"]
 # -----------------------------------------------------------------------------
 FROM slim AS full
 
-ARG UPX_VERSION=5.1.1
+ARG UPX_VERSION=5.2.0
 ARG DOCKER_VERSION=29.5.2
 
 RUN set -eux; \
