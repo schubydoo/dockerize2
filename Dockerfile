@@ -79,8 +79,10 @@ RUN set -eux; \
 #   - libgcrypt20: base ships 1.10.1-3; 1.10.1-3+deb12u1 (DSA-6294-1) fixes
 #     CVE-2026-41989, a heap overflow / DoS via crafted ECDH ciphertext to
 #     gcry_pk_decrypt.
+#   - openssl + libssl3: base ships 3.0.20-1~deb12u1; deb12u2 fixes the OpenSSL
+#     CVE batch — CVE-2026-45447, CVE-2026-45445, CVE-2026-34182, and others.
 # `--only-upgrade` (no exact pin) always moves forward, so each is a harmless
-# no-op once the base catches up — unlike a pinned `=deb12u7`, which would fail
+# no-op once the base catches up — unlike a pinned `=deb12uN`, which would fail
 # the build by implying a downgrade. Drop a package once the base no longer lags.
 # -----------------------------------------------------------------------------
 FROM python:3.14-slim-bookworm@sha256:a70519002c49552ea0a853de47599cf40479b001bd7a624f1112eaf44dcaccc7 AS slim
@@ -92,7 +94,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install --no-install-recommends -y --only-upgrade libgnutls30 libgcrypt20; \
+    apt-get install --no-install-recommends -y --only-upgrade libgnutls30 libgcrypt20 openssl libssl3; \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/dist/*.whl /tmp/
@@ -138,7 +140,7 @@ CMD ["--help"]
 FROM slim AS full
 
 ARG UPX_VERSION=5.2.0
-ARG DOCKER_VERSION=29.5.2
+ARG DOCKER_VERSION=29.5.3
 
 RUN set -eux; \
     apt-get update; \
