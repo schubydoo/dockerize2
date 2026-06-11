@@ -46,11 +46,11 @@
     },
     {
       "customType": "regex",
-      "description": "docker/cli (static client) version (github-releases).",
+      "description": "docker/cli (static client) version. Uses github-tags, NOT github-releases: docker/cli publishes git tags (v29.5.3, ...) but cuts no GitHub Releases, so the github-releases datasource sees nothing and DOCKER_VERSION never bumps. extractVersionTemplate strips the v; SemVer versioning skips the -rc.N prereleases.",
       "managerFilePatterns": ["/^Dockerfile$/"],
       "matchStrings": ["ARG DOCKER_VERSION=(?<currentValue>\\S+)"],
       "depNameTemplate": "docker/cli",
-      "datasourceTemplate": "github-releases",
+      "datasourceTemplate": "github-tags",
       "extractVersionTemplate": "^v?(?<version>.+)$"
     }
   ],
