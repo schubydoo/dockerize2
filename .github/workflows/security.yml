@@ -32,12 +32,29 @@ on:
   pull_request:
   schedule:
     - cron: "37 4 * * 1"
+  # After a Release finishes, re-scan the freshly published :latest. The
+  # push-to-master scan races the tag-triggered Release build and reads the
+  # PREVIOUS :latest, so post-release the image alerts lag by one scan cycle
+  # (until the Monday cron). workflow_run waits for the whole Release workflow
+  # — including the image push — to complete, so :latest is guaranteed current.
+  # Only the trivy-image job acts on this event (every other job gates it out),
+  # which keeps the code-scanning analysis key identical and refreshes the
+  # existing image alerts in place instead of creating a duplicate set.
+  # zizmor: ignore[dangerous-triggers] — safe here: this job neither checks
+  # out the triggering run's (untrusted) code nor consumes its artifacts; it
+  # only pulls the already-published GHCR :latest and uploads SARIF pinned to
+  # master. No privilege is handed to attacker-controlled content.
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # event_name in the key so a post-release (workflow_run) scan can't be
+  # cancelled by — or cancel — a concurrent push scan on refs/heads/master.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -103,6 +120,8 @@ jobs:
   # --------------------------------------------------------------------
   codeql:
     name: codeql analyze
+    # Source analysis — irrelevant to a post-release image re-scan.
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -135,6 +154,8 @@ jobs:
   # --------------------------------------------------------------------
   gitleaks:
     name: secret scan
+    # Secret scan over the source — irrelevant to a post-release image re-scan.
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -158,7 +179,7 @@ jobs:
     # Gates on changes to pyproject.toml / uv.lock — fs scan reads the
     # dep manifest; nothing else moves the result. Always runs on push /
     # schedule so the master-tracked baseline stays current.
-    if: needs.changes.outputs.deps == 'true' || github.event_name != 'pull_request'
+    if: (needs.changes.outputs.deps == 'true' || github.event_name != 'pull_request') && github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -190,10 +211,11 @@ jobs:
   # Trivy image scan — report-only for runtime-image CVEs in third-party
   # binaries (docker CLI, syft) whose patches we usually can't action.
   # On PR: builds the PR's Dockerfile (amd64, --load) and scans THAT.
-  # On push/cron: scans the published :latest from GHCR.
-  # Single image-scan job for both events keeps the analysis key stable
+  # On push/cron/workflow_run: scans the published :latest from GHCR.
+  # Single image-scan job for every event keeps the analysis key stable
   # across PR and master (alerts otherwise show "cannot determine alerts
-  # introduced by this PR"). (Was: trivy.yml / image)
+  # introduced by this PR"). This is also the ONLY job that runs on the
+  # post-release workflow_run event. (Was: trivy.yml / image)
   # --------------------------------------------------------------------
   trivy-image:
     name: trivy image scan
@@ -201,8 +223,11 @@ jobs:
     # Gates on Dockerfile or dep changes — those are the only PR-side
     # diffs that can change the built image's CVE surface. Always runs on
     # push / schedule (scans :latest from GHCR; catches drift even when
-    # the Dockerfile is untouched).
-    if: needs.changes.outputs.image == 'true' || github.event_name != 'pull_request'
+    # the Dockerfile is untouched). On workflow_run, runs only if the
+    # Release it followed actually succeeded (else :latest is unchanged).
+    if: >-
+      (needs.changes.outputs.image == 'true' || github.event_name != 'pull_request')
+      && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -252,6 +277,13 @@ jobs:
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
+          # On workflow_run the event ref is the Release's *tag*; the codeql
+          # action would otherwise file these alerts against the tag ref. Pin
+          # to master (the tagged commit is master's tip at release time) so
+          # the image alerts refresh on the branch the Security tab tracks.
+          # Empty on every other event → the action auto-detects ref/sha.
+          ref: ${{ github.event_name == 'workflow_run' && 'refs/heads/master' || '' }}
+          sha: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
 
   # --------------------------------------------------------------------
   # Zizmor — audits the workflow files themselves for misconfigurations
@@ -264,7 +296,7 @@ jobs:
     # Gates on workflow file changes — zizmor exclusively audits workflows.
     # Always runs on push / schedule so a new zizmor rule release still
     # has a chance to flag pre-existing issues.
-    if: needs.changes.outputs.workflows == 'true' || github.event_name != 'pull_request'
+    if: (needs.changes.outputs.workflows == 'true' || github.event_name != 'pull_request') && github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
