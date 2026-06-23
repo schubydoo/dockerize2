@@ -11,7 +11,7 @@
 # BuildKit "only ever resolve this source for the build host", which it
 # does once.
 # -----------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:0.11.21@sha256:ff07b86af50d4d9391d9daf4ff89ce427bc544f9aae87057e69a1cc0aa369946 AS uv-source
+FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:0.11.23@sha256:d0a0a753ab981624b49c97abc98821c1c09f4ca69d1ef5cee69c501be3d88479 AS uv-source
 
 # -----------------------------------------------------------------------------
 # Stage 2: build the wheel.
