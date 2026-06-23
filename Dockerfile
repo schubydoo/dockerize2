@@ -140,7 +140,7 @@ CMD ["--help"]
 FROM slim AS full
 
 ARG UPX_VERSION=5.2.0
-ARG DOCKER_VERSION=29.5.3
+ARG DOCKER_VERSION=29.6.0
 
 RUN set -eux; \
     apt-get update; \
