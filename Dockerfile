@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24
+# syntax=docker/dockerfile:1.25
 
 # -----------------------------------------------------------------------------
 # Stage 1: pull uv via a $BUILDPLATFORM-scoped alias.
