@@ -21,7 +21,7 @@ FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:0.11.23@sha256:d0a0a753ab981
 # every per-arch runtime stage can install — no point QEMU-emulating the
 # build on arm64/armv7.
 # -----------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM python:3.14-slim-bookworm@sha256:a70519002c49552ea0a853de47599cf40479b001bd7a624f1112eaf44dcaccc7 AS builder
+FROM --platform=$BUILDPLATFORM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -85,7 +85,7 @@ RUN set -eux; \
 # no-op once the base catches up — unlike a pinned `=deb12uN`, which would fail
 # the build by implying a downgrade. Drop a package once the base no longer lags.
 # -----------------------------------------------------------------------------
-FROM python:3.14-slim-bookworm@sha256:a70519002c49552ea0a853de47599cf40479b001bd7a624f1112eaf44dcaccc7 AS slim
+FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
