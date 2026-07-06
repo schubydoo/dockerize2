@@ -46,7 +46,7 @@ RUN uv build --wheel
 # Go's native cross-compile produces every target arch in seconds.
 # -----------------------------------------------------------------------------
 FROM --platform=$BUILDPLATFORM golang:1.26-bookworm@sha256:b305420a68d0f229d91eb3b3ed9e519fcf2cf5461da4bef997bf927e8c0bfd2b AS syft-builder
-ARG SYFT_VERSION=v1.45.1
+ARG SYFT_VERSION=v1.46.0
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT

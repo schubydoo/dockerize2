@@ -182,7 +182,7 @@ jobs:
     env:
       # Kept in sync with the Dockerfile's SYFT_VERSION ARG. Renovate
       # tracks both via the custom regex manager in renovate.json.
-      SYFT_VERSION: v1.45.1
+      SYFT_VERSION: v1.46.0
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
